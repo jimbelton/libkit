@@ -1,0 +1,15 @@
+#! /usr/bin/perl
+#
+# When KIT_ALLOC_SET_LOG(1) is used in a debug build, this script analyzes
+# output, looking for allocations not being freed.
+
+use strict;
+use warnings;
+
+my %mem;
+while (my $line = <>) {
+    print $line if $line =~ m{memwrap_(?:free|realloc)\(0x([\da-f]+)[,)]} and not delete $mem{$1};
+    $mem{$1} = $line if $line =~ m{0x([\da-f]+) = memwrap_((m|c|re)alloc|strdup)\(};
+}
+
+print for values %mem;

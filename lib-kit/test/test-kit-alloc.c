@@ -1,0 +1,153 @@
+#include <sxe-util.h>
+#include <string.h>
+#include <tap.h>
+
+#include "kit-mock.h"
+#include "kit-alloc.h"
+
+static void
+check_counters(const char *why, int m, int c, int r, int f, int fail)
+{
+    is(kit_counter_get(KIT_COUNTER_MEMORY_MALLOC), m, "%s, the KIT_COUNTER_MEMORY_MALLOC value is %d", why, m);
+    is(kit_counter_get(KIT_COUNTER_MEMORY_CALLOC), c, "%s, the KIT_COUNTER_MEMORY_CALLOC value is %d", why, c);
+    is(kit_counter_get(KIT_COUNTER_MEMORY_REALLOC), r, "%s, the KIT_COUNTER_MEMORY_REALLOC value is %d", why, r);
+    is(kit_counter_get(KIT_COUNTER_MEMORY_FREE), f, "%s, the KIT_COUNTER_MEMORY_FREE value is %d", why, f);
+    is(kit_counter_get(KIT_COUNTER_MEMORY_FAIL), fail, "%s, the KIT_COUNTER_MEMORY_FAIL value is %d", why, fail);
+}
+
+static void
+clear_counters(void)
+{
+    kit_counter_zero(KIT_COUNTER_MEMORY_MALLOC);
+    kit_counter_zero(KIT_COUNTER_MEMORY_CALLOC);
+    kit_counter_zero(KIT_COUNTER_MEMORY_REALLOC);
+    kit_counter_zero(KIT_COUNTER_MEMORY_FREE);
+    kit_counter_zero(KIT_COUNTER_MEMORY_FAIL);
+}
+
+struct counter_gather {
+    unsigned long bytes;
+    unsigned long malloc;
+    unsigned long calloc;
+    unsigned long realloc;
+    unsigned long free;
+    unsigned long fail;
+    unsigned long wtf;
+};
+
+static void
+counter_callback(void *v, const char *key, const char *val)
+{
+    struct counter_gather *cg = v;
+    unsigned i;
+    char *end;
+
+    const struct {
+        const char *key;
+        unsigned long *val;
+    } map[] = {
+        { "memory.bytes", &cg->bytes },
+        { "memory.malloc", &cg->malloc },
+        { "memory.calloc", &cg->calloc },
+        { "memory.realloc", &cg->realloc },
+        { "memory.free", &cg->free },
+        { "memory.fail", &cg->fail },
+        { NULL, &cg->wtf },
+    };
+
+    for (i = 0; i < sizeof(map) / sizeof(*map); i++)
+        if (map[i].key == NULL || strcmp(key, map[i].key) == 0) {
+            if (map[i].key == NULL)
+                SXEL1("Unexpected counter_callback key '%s'", key);
+            *map[i].val = strtoul(val, &end, 0);
+            if (*end)
+                *map[i].val = 666;
+            break;
+        }
+}
+
+int
+main(int argc, char **argv)
+{
+    size_t talloc1, talloc2, talloc3;
+    size_t alloc1, alloc2, alloc3;
+    struct counter_gather cg;
+    char *ptr1, *ptr2;
+    int failures;
+
+    SXE_UNUSED_PARAMETER(argc);
+    SXE_UNUSED_PARAMETER(argv);
+
+    plan_tests(71);
+    kit_memory_counters_init();
+    kit_counters_initialize(1);
+    clear_counters();
+
+    ok(kit_memory_counters_initialized(), "Memory counters are initialized");
+
+    alloc1 = kit_allocated_bytes();
+    talloc1 = kit_thread_allocated_bytes();
+    check_counters("At startup", 0, 0, 0, 0, 0);
+
+    ptr1 = kit_malloc(100);
+    check_counters("After one malloc", 1, 0, 0, 0, 0);
+    alloc2 = kit_allocated_bytes();
+    talloc2 = kit_thread_allocated_bytes();
+    ok(alloc2 - alloc1 >= 100, "kit_allocated_bytes() reports that alloc2 (%zu) is at least 100 greater than alloc1 (%zu)", alloc2, alloc1);
+    ok(talloc2 - talloc1 >= 100, "kit_thread_allocated_bytes() reports that talloc2 (%zu) is at least 100 greater than talloc1 (%zu)", talloc2, talloc1);
+
+    ptr2 = kit_malloc(0);
+    ok(ptr1 != NULL, "kit_malloc(0) returns a pointer");
+    check_counters("After malloc(0)", 2, 0, 0, 0, 0);
+
+    kit_free(ptr2);
+    check_counters("After a free()", 2, 0, 0, 1, 0);
+
+    ptr2 = kit_calloc(2, 100);
+    check_counters("After an additional calloc", 2, 1, 0, 1, 0);
+    alloc3 = kit_allocated_bytes();
+    talloc3 = kit_thread_allocated_bytes();
+    ok(alloc3 - alloc2 >= 200, "kit_allocated_bytes() reports that alloc3 (%zu) is at least 200 greater than alloc2 (%zu)", alloc3, alloc2);
+    ok(talloc3 - talloc2 >= 200, "kit_thread_allocated_bytes() reports that talloc3 (%zu) is at least 200 greater than talloc2 (%zu)", talloc3, talloc2);
+
+    kit_free(ptr1);
+    check_counters("After one free()", 2, 1, 0, 2, 0);
+
+    ptr2 = kit_realloc(ptr2, 10);
+    check_counters("After a realloc()", 2, 1, 1, 2, 0);
+
+    ptr1 = kit_realloc(ptr2, 0);
+    ok(ptr1 == NULL, "realloc(..., 0) returns NULL");
+    check_counters("After a realloc(..., 0)", 2, 1, 1, 3, 0);
+
+    ptr1 = kit_realloc(NULL, 0);
+    check_counters("After a realloc(NULL, 0)", 3, 1, 1, 3, 0);
+
+    kit_free(NULL);
+    check_counters("After a free(NULL)", 3, 1, 1, 3, 0);
+
+    failures = 0;
+    MOCKFAIL_START_TESTS(1, KIT_REDUCE_REALLOC);
+    is(kit_reduce(ptr1, 1), ptr1, "When kit_reduce() fails to realloc(), it returns the same pointer");
+    failures++;
+    MOCKFAIL_END_TESTS();
+
+    kit_reduce(ptr1, 0);
+    check_counters("After free()ing the last pointer", 3, 1, 1, 4, failures);
+
+    ok(!kit_reduce(NULL, 0), "kit_reduce(NULL, 0) is a no-op");
+
+    diag("Checking counter gatherer");
+    memset(&cg, 0xa5, sizeof(cg));
+    cg.wtf = 0;
+    kit_counters_mib_text("memory", &cg, counter_callback, -1, 0);
+    ok(cg.bytes > 200, "Allocated more than 200 bytes");
+    is(cg.malloc, 3, "Malloc says 3");
+    is(cg.calloc, 1, "Calloc says 1");
+    is(cg.realloc, 1, "Realloc says 1");
+    is(cg.free, 4, "Free says 4");
+    is(cg.fail, failures, "Fail says %d", failures);
+    is(cg.wtf, 0, "WTF says 0");
+
+    return exit_status();
+}
