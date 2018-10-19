@@ -8,8 +8,8 @@ use warnings;
 
 my %mem;
 while (my $line = <>) {
-    print $line if $line =~ m{memwrap_(?:free|realloc)\(0x([\da-f]+)[,)]} and not delete $mem{$1};
-    $mem{$1} = $line if $line =~ m{0x([\da-f]+) = memwrap_((m|c|re)alloc|strdup)\(};
+    print $line if $line =~ m{kit_(?:free|realloc)\(0x([\da-f]+)[,)]} and not delete $mem{$1};
+    $mem{$1} = $line if $line =~ m{0x([\da-f]+) = kit_((m|c|re)alloc|strdup)\(};
 }
 
 print for values %mem;
