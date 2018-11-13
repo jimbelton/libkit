@@ -16,7 +16,7 @@ kit_deviceid_to_buf(const struct kit_deviceid *deviceid, char *buf, size_t size)
 {
     SXE_UNUSED_PARAMETER(size);
     SXEA6(size >= KIT_DEVICEID_STR_LEN + 1, "DeviceID buffer must have room for %u hex digits plus 1 for the NUL", KIT_DEVICEID_STR_LEN);
-    sxe_hex_from_bytes(buf, deviceid ? deviceid->bytes : kit_deviceid_nil.bytes, KIT_DEVICEID_SIZE);
+    kit_bin2hex(buf, (const char *)deviceid ? deviceid->bytes : kit_deviceid_nil.bytes, KIT_DEVICEID_SIZE, KIT_BIN2HEX_LOWER);
     return buf;
 }
 
@@ -40,13 +40,13 @@ kit_deviceid_from_str(struct kit_deviceid *deviceid, const char *str_hex)
         *deviceid = kit_deviceid_nil;
     }
     else
-        sxe_hex_to_bytes(deviceid->bytes, str_hex, KIT_DEVICEID_STR_LEN);
+        kit_hex2bin(deviceid->bytes, str_hex, KIT_DEVICEID_STR_LEN);
 
     SXER7("return deviceid=%s", kit_deviceid_to_str(deviceid));
     return deviceid;
 }
 
-/* Compare two guids */
+/* Compare two deviceids */
 int
 kit_deviceid_cmp(const struct kit_deviceid *deviceid1, const struct kit_deviceid *deviceid2)
 {
