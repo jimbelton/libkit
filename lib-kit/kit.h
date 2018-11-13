@@ -17,6 +17,9 @@
 #define KIT_GUID_SIZE                   16
 #define KIT_GUID_STR_LEN                (2 * KIT_GUID_SIZE)
 
+#define KIT_DEVICEID_SIZE               8
+#define KIT_DEVICEID_STR_LEN            (2 * KIT_DEVICEID_SIZE)
+
 #define KIT_SORTEDARRAY_DEFAULT         0       // No special behaviours
 #define KIT_SORTEDARRAY_ALLOW_INSERTS   0x01    // Elements can be added to a sorted array out of order (expensive!)
 #define KIT_SORTEDARRAY_ALLOW_GROWTH    0x02    // Sorted array is allowed to grow dynamically
@@ -32,6 +35,10 @@ enum kit_bin2hex_fmt {
 
 struct kit_guid {
     uint8_t  bytes[KIT_GUID_SIZE];
+};
+
+struct kit_deviceid {
+    uint8_t  bytes[KIT_DEVICEID_SIZE];
 };
 
 struct kit_sortedelement_class {
@@ -57,9 +64,11 @@ kit_udp_ttltos_init(struct kit_udp_ttltos *self)
 typedef void *(*kit_realloc_ptr_t)(void *, size_t);
 
 extern const struct kit_guid kit_guid_nil;    // The nil GUID (All bytes are 0)
+extern const struct kit_deviceid kit_deviceid_nil;    // The nil DEVICEID (All bytes are 0)
 
 #include "kit-base-encode-proto.h"
 #include "kit-guid-proto.h"
+#include "kit-deviceid-proto.h"
 #include "kit-hostname-proto.h"
 #include "kit-sortedarray-proto.h"
 #include "kit-time-proto.h"
