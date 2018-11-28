@@ -105,6 +105,16 @@ encode(char *out, size_t *olen, const uint8_t *in, size_t *ilen, const struct ba
     SXEA6(shval < 8, "Cannot find a shift value for %u bits", cfg->bits);
     SXEA6(strlen(cfg->binmap) == cfg->bits, "Invalid configured base%u binmap", cfg->bits);
 
+    if (!*olen)
+        return "Output overflow";
+
+    if (!*ilen) {
+        /* Early escape for zero-length input */
+        out[0]='\0';
+        *olen = 0;
+        return NULL;
+    }
+
     maxilen = *ilen;
     *ilen = 0;
     maxolen = *olen;

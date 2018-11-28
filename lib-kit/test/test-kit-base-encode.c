@@ -15,10 +15,17 @@ main(int argc, char **argv)
     SXE_UNUSED_PARAMETER(argc);
     SXE_UNUSED_PARAMETER(argv);
 
-    plan_tests(61);
+    plan_tests(70);
 
     diag("The bin2hex/hex2bin interface");
     {
+        sprintf(txt, "01234567890123456789");
+        is(kit_bin2hex(txt, (const uint8_t *)"", 0, KIT_BIN2HEX_UPPER), 0, "Correctly encoded empty data");
+        is_eq(txt, "", "Encode on empty buffer formatted as null-string");
+
+        memset(bin, '\1', sizeof(bin));
+        is(kit_hex2bin(bin, (const char *)"", 0), 0, "Correctly decoded empty data");
+
         is(kit_bin2hex(txt, (const uint8_t *)"\1\2\3\4", 4, KIT_BIN2HEX_LOWER), 8, "Translated a small binary string to hex");
         is_eq(txt, "01020304", "The hex data is correct");
         is(kit_hex2bin(bin, txt, 8), 4, "Translated it back to binary");
@@ -79,6 +86,15 @@ main(int argc, char **argv)
         is(blen, 8, "blen was set to 8");
         is(tlen, 17, "tlen was set to 17");
         ok(memcmp(bin, "\12\24\36\50\62\74\106\120", 8) == 0, "The binary is correct");
+
+        diag("Verify overflow for empty output buffer");
+        tlen = 0;
+        blen = 4;
+        is_eq(kit_base16encode(txt, &tlen, (const uint8_t *)"\12\24\36\50", &blen), "Output overflow", "Got overflow error for zero-length output buffer with encode");
+
+        blen = 0;
+        tlen = sizeof(txt);
+        is_eq(kit_base16decode(bin, &blen, txt, &tlen, 0), "Output overflow", "Got overflow error for zero-length output buffer with decode");
     }
 
     diag("The base32encode/base32decode interface");
@@ -113,6 +129,15 @@ main(int argc, char **argv)
         is(blen, 4, "blen was set to 4");
         is(tlen, 7, "tlen was set to 7 - despite the padding character (which was ignored)");
         ok(memcmp(bin, "\12\24\36\50", 4) == 0, "The binary is the same as the original");
+
+        diag("Verify overflow for empty output buffer");
+        tlen = 0;
+        blen = 4;
+        is_eq(kit_base32hexencode(txt, &tlen, (const uint8_t *)"\12\24\36\50", &blen), "Output overflow", "Got overflow error for zero-length output buffer with encode");
+
+        blen = 0;
+        tlen = sizeof(txt);
+        is_eq(kit_base32hexdecode(bin, &blen, txt, &tlen, 0), "Output overflow", "Got overflow error for zero-length output buffer with decode");
     }
 
     diag("The base64encode/base64decode interface");
@@ -158,6 +183,16 @@ main(int argc, char **argv)
             tlen = i;
             is_eq(kit_base64encode(txt, &tlen, (const uint8_t *)"\12\24\36\50", &blen), "Output overflow", "Got an error from kit_base64encode()");
         }
+
+        diag("Verify overflow for empty output buffer");
+        tlen = 0;
+        blen = 4;
+        is_eq(kit_base64encode(txt, &tlen, (const uint8_t *)"\12\24\36\50", &blen), "Output overflow", "Got overflow error for zero-length output buffer with encode");
+
+        blen = 0;
+        tlen = sizeof(txt);
+        is_eq(kit_base64decode(bin, &blen, txt, &tlen, 0), "Output overflow", "Got overflow error for zero-length output buffer with decode");
+
     }
 
     return exit_status();
