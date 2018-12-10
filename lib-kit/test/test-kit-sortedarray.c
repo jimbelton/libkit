@@ -4,7 +4,7 @@
 #include "kit.h"
 
 static void *
-failing_realloc(void * memory, size_t size)
+failing_realloc(void *memory, size_t size)
 {
     (void)memory;
     (void)size;
@@ -93,7 +93,7 @@ main(void)
     ok(!kit_sortedarray_get(&testclass, array, count, &u[20]), "Couldn't get 20");
     ok(!kit_sortedarray_get(&testclass, array, count, &u[24]), "Couldn't get 24");
 
-    const unsigned * g;
+    const unsigned *g;
     ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[2]))  && *g == 2,  "Got 2");
     ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[7]))  && *g == 7,  "Got 7");
     ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[23])) && *g == 23, "Got 23");

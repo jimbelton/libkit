@@ -19,7 +19,7 @@ main(int argc, char **argv)
 
     diag("The bin2hex/hex2bin interface");
     {
-        sprintf(txt, "01234567890123456789");
+        snprintf(txt, sizeof(txt), "01234567890123456789");
         is(kit_bin2hex(txt, (const uint8_t *)"", 0, KIT_BIN2HEX_UPPER), 0, "Correctly encoded empty data");
         is_eq(txt, "", "Encode on empty buffer formatted as null-string");
 
