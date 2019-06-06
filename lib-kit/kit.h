@@ -27,6 +27,8 @@
 
 #define KIT_UDP_DELAY                   0x01    // Get the delay (RQT) in msec for all packets received on this socket
 #define KIT_UDP_TTLTOS                  0x02    // Get the TTL and TOS fields for all packets received on this socket
+#define KIT_UDP_DST_ADDR                0x04    // Get the original destination address for packets received on this socket
+#define KIT_UDP_TRANSPARENT             0x08    // Set the UDP socket for use with a transparent proxy
 
 enum kit_bin2hex_fmt {
     KIT_BIN2HEX_UPPER,

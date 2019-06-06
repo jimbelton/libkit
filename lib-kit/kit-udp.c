@@ -10,7 +10,9 @@
  * Create a UDP socket and optionally set socket options for extra information
  *
  * @param domain One of AF_INET or AF_INET6
- * @param flags  0, KIT_UDP_DELAY (get delay in msec), KIT_UDP_TTLTOS (get TTL/TOS), or KIT_UDP_DELAY | KIT_UDP_TTLTOS
+ * @param flags  0, KIT_UDP_DELAY (get delay in msec), KIT_UDP_TTLTOS (get TTL/TOS),
+ *               KIT_UDP_DST_ADDR (get destination address), KIT_UDP_TRANSPARENT (enabled transparent proxy)
+ *               or any of these values combined.
  */
 int
 kit_udp_socket(int domain, unsigned flags)
@@ -30,6 +32,14 @@ kit_udp_socket(int domain, unsigned flags)
             SXEA1(setsockopt(fd, IPPROTO_IP, IP_RECVTTL, &enabled, sizeof(enabled)) >= 0, "Failed to enable IP TTLs");
             SXEA1(setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &enabled, sizeof(enabled)) >= 0, "Failed to enable IP TOSs");
         }
+
+        if (flags & KIT_UDP_DST_ADDR) {
+            SXEA1(setsockopt(fd, IPPROTO_IP, IP_ORIGDSTADDR, &enabled, sizeof(enabled)) >= 0, "Failed to enable original dst addr");
+        }
+
+        if (flags & KIT_UDP_TRANSPARENT) {
+            SXEA1(setsockopt(fd, IPPROTO_IP, IP_TRANSPARENT, &enabled, sizeof(enabled)) >= 0, "Failed to enable transparent proxying");  /* COVERAGE EXCLUSION: Must be priveleged to set IP_TRANSPARENT */
+        }
     }
 
     SXER6("return fd=%d", fd);
@@ -39,33 +49,39 @@ kit_udp_socket(int domain, unsigned flags)
 /**
  * Receive from a UDP socket, capturing the time spent in the receive queue if possible
  *
- * @param fd            UDP socket descriptor
- * @param buffer        Pointer to buffer to receive data into
- * @param buffer_len    Size of buffer
- * @param flags         Include MSG_TRUNC to have the length of the UDP message returned even if it is truncated.
- * @param address       NULL or pointer to sockaddr to store the source address
- * @param address_len   NULL or pointer to integer holding size of address structure in/size of address out
- * @param delay_in_msec NULL or pointer to an unsigned long in which to store the delay in msec. If unavailable, set to ~0UL.
- * @param ttltos        NULL or pointer to a struct in which to store the IP TTL and TOS. If unavailable, struct is unchanged.
+ * @param fd                UDP socket descriptor
+ * @param buffer            Pointer to buffer to receive data into
+ * @param buffer_len        Size of buffer
+ * @param flags             Include MSG_TRUNC to have the length of the UDP message returned even if it is truncated.
+ * @param src_address       NULL or pointer to sockaddr to store the source address
+ * @param src_address_len   NULL or pointer to integer holding size of address structure in/size of address out
+ * @param dest_address      NULL or pointer to sockaddr to store the destination address
+ * @param dest_address_len  NULL or pointer to integer holding size of address structure in/size of address out
+ * @param delay_in_msec     NULL or pointer to an unsigned long in which to store the delay in msec. If unavailable, set to ~0UL.
+ * @param ttltos            NULL or pointer to a struct in which to store the IP TTL and TOS. If unavailable, struct is unchanged.
  */
 ssize_t
-kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags, struct sockaddr *address, socklen_t *address_len,
+kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
+             struct sockaddr *src_address, socklen_t *src_address_len,
+             struct sockaddr *dest_address, socklen_t *dest_address_len,
              unsigned long *delay_in_msec, struct kit_udp_ttltos *ttltos)
 {
-    uint8_t         control[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(int)) * 2];  /* SO_TIMESTAMP + IP_TTL + IP_TOS */
+    uint8_t         control[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(int)) * 2 +
+                            CMSG_SPACE(sizeof(struct sockaddr_in6))];  /* SO_TIMESTAMP + IP_TTL + IP_TOS + IP_ORIGDSTADDR */
     ssize_t         size;
     struct msghdr   header;
     struct iovec    io_vector[1];
     struct cmsghdr *cmsghdr;
     struct timeval  current;
     struct timeval *timestamp = NULL;
-    int             rerrno, *valp;
+    int             rerrno;
+    bool            dest_addr_found = false;
 
     io_vector[0].iov_base = buffer;
     io_vector[0].iov_len  = buffer_len;
 
-    header.msg_name       = address;   // May be NULL
-    header.msg_namelen    = address_len ? *address_len : 0;
+    header.msg_name       = src_address;   // May be NULL
+    header.msg_namelen    = src_address_len ? *src_address_len : 0;
     header.msg_iov        = io_vector;
     header.msg_iovlen     = 1;
     header.msg_control    = &control;
@@ -105,17 +121,37 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags, struct sockaddr
                 break;
 
             case IPPROTO_IP:
-                if (ttltos) {
-                    valp = (int *)CMSG_DATA(cmsghdr);
-                    if (cmsghdr->cmsg_type == IP_TTL)
-                        ttltos->ttl = *valp;
+                switch (cmsghdr->cmsg_type) {
+                case IP_ORIGDSTADDR:
+                    if (dest_address && dest_address_len) {
+                        struct sockaddr *addr = (struct sockaddr *)CMSG_DATA(cmsghdr);
+                        if (addr->sa_family == AF_INET6) {
+                            SXEA1(*dest_address_len >= sizeof(struct sockaddr_in6), "Provided dest_address_len < sizeof sockaddr_in6");  /* COVERAGE EXCLUSION: IPv6 testing is hard */
+                            *dest_address_len = sizeof(struct sockaddr_in6);  /* COVERAGE EXCLUSION: IPv6 testing is hard */
+                        } else {
+                            SXEA1(*dest_address_len >= sizeof(struct sockaddr_in), "Provided dest_address_len < sizeof sockaddr_in");
+                            *dest_address_len = sizeof(struct sockaddr_in);
+                        }
 
-                    else if (cmsghdr->cmsg_type == IP_TOS)
-                        ttltos->tos = *valp;
+                        memcpy(dest_address, addr, *dest_address_len);
+                        dest_addr_found = true;
+                    }
+                    break;
 
-                    else
-                        SXEL3("UDP message received from fd %d control data includes an IPPROTO_IP cmsg that is neither"    /* COVERAGE EXCLUSION: Can't happen */
-                              " IP_TTL nor IP_TOS (got type %d)", fd, cmsghdr->cmsg_type);
+                case IP_TTL:
+                    if (ttltos) {
+                        ttltos->ttl = *(int *)CMSG_DATA(cmsghdr);
+                    }
+                    break;
+                case IP_TOS:
+                    if (ttltos) {
+                        ttltos->tos = *(int *)CMSG_DATA(cmsghdr);
+                    }
+                    break;
+
+                default:
+                    SXEL3("UDP message received from fd %d control data includes an IPPROTO_IP cmsg that is neither"    /* COVERAGE EXCLUSION: Can't happen */
+                          " IP_TTL, IP_TOS, nor IP_ORIGDSTADDR (got type %d)", fd, cmsghdr->cmsg_type);
                 }
 
                 break;
@@ -127,8 +163,11 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags, struct sockaddr
     } else
         SXEL6("UDP message not received from fd %d (error=%s%s)", fd, strerror(errno), header.msg_flags & MSG_TRUNC ? " (MSG_TRUNC)" : "");
 
-    if (address_len)
-        *address_len = header.msg_namelen;
+    if (src_address_len)
+        *src_address_len = header.msg_namelen;
+
+    if (dest_address_len && !dest_addr_found)
+        *dest_address_len = 0;
 
     errno = rerrno;
 
