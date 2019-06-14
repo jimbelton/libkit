@@ -74,7 +74,7 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
     struct cmsghdr *cmsghdr;
     struct timeval  current;
     struct timeval *timestamp = NULL;
-    int             rerrno;
+    int             rerrno, *valp;
     bool            dest_addr_found = false;
 
     io_vector[0].iov_base = buffer;
@@ -136,17 +136,23 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
                         memcpy(dest_address, addr, *dest_address_len);
                         dest_addr_found = true;
                     }
+
                     break;
 
                 case IP_TTL:
                     if (ttltos) {
-                        ttltos->ttl = *(int *)CMSG_DATA(cmsghdr);
+                        valp        = (int *)CMSG_DATA(cmsghdr);    // Required to avoid breaking strict-aliasing rules
+                        ttltos->ttl = *valp;
                     }
+
                     break;
+
                 case IP_TOS:
                     if (ttltos) {
-                        ttltos->tos = *(int *)CMSG_DATA(cmsghdr);
+                        valp        = (int *)CMSG_DATA(cmsghdr);    // Required to avoid breaking strict-aliasing rules
+                        ttltos->tos = *valp;
                     }
+
                     break;
 
                 default:
