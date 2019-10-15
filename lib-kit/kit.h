@@ -74,6 +74,7 @@ extern const struct kit_deviceid kit_deviceid_nil;    // The nil DEVICEID (All b
 #include "kit-hostname-proto.h"
 #include "kit-sortedarray-proto.h"
 #include "kit-time-proto.h"
+#include "kit-strto-proto.h"
 #include "kit-udp-proto.h"
 
 #endif
