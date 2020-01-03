@@ -29,6 +29,15 @@ kit_guid_to_str(const struct kit_guid *guid)
     return kit_guid_to_buf(guid, str, sizeof(str));
 }
 
+/* Return printable string of a md5 */
+const char *
+kit_md5_to_str(const struct kit_md5 *md5)
+{
+    static __thread char str[KIT_GUID_STR_LEN + 1];
+
+    return kit_guid_to_buf((const struct kit_guid *)md5, str, sizeof(str));
+}
+
 /* Build a guid from a string */
 struct kit_guid *
 kit_guid_from_str(struct kit_guid *guid, const char *str_hex)

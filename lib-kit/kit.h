@@ -14,8 +14,11 @@
 #define KIT_BASE_DECODE_DEFAULT         0x00
 #define KIT_BASE_DECODE_SKIP_WHITESPACE 0x01
 
-#define KIT_GUID_SIZE                   16
-#define KIT_GUID_STR_LEN                (2 * KIT_GUID_SIZE)
+#define KIT_MD5_SIZE                    16
+#define KIT_MD5_STR_LEN                 (2 * KIT_MD5_SIZE)
+
+#define KIT_GUID_SIZE                   KIT_MD5_SIZE
+#define KIT_GUID_STR_LEN                KIT_MD5_STR_LEN
 
 #define KIT_DEVICEID_SIZE               8
 #define KIT_DEVICEID_STR_LEN            (2 * KIT_DEVICEID_SIZE)
@@ -37,6 +40,10 @@ enum kit_bin2hex_fmt {
 
 struct kit_guid {
     uint8_t  bytes[KIT_GUID_SIZE];
+};
+
+struct kit_md5 {
+    uint8_t  bytes[KIT_MD5_SIZE];
 };
 
 struct kit_deviceid {
