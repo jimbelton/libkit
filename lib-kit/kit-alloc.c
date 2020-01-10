@@ -1,9 +1,16 @@
 #include "kit-mock.h"
 #include "kit-alloc.h"
 
+#include <fcntl.h>
+#include <malloc.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sxe-util.h>
 #include <jemalloc.h>
+
+#ifdef __GLIBC__
+#pragma GCC diagnostic ignored "-Waggregate-return"    // To allow use of glibc mallinfo
+#endif
 
 /*-
  * As of December 2012, the stock malloc implementation in linux is not
@@ -37,7 +44,19 @@
  * before it's done.
  */
 
-struct kit_memory_counters kit_memory_counters; /* global */
+#if SXE_DEBUG
+int kit_alloc_diagnostics;
+#define KIT_ALLOC_LOG(...) do { if (kit_alloc_diagnostics) SXEL6(__VA_ARGS__); } while (0)
+#else
+#define KIT_ALLOC_LOG(...) do { } while (0)
+#endif
+
+struct kit_memory_counters kit_memory_counters;             // global
+size_t                     kit_memory_allocated_max = 0;    // This tracks the high watermark ever allocated with jemalloc
+
+#ifdef __linux__
+static int proc_statm_fd = -1;    // Open file descriptor on /proc/<pid>/statm; must be opened before calling chroot
+#endif
 
 static unsigned long long
 counter_bytes_combine_handler(int threadnum)
@@ -48,12 +67,30 @@ counter_bytes_combine_handler(int threadnum)
 void
 kit_memory_counters_init(void)
 {
-    kit_memory_counters.bytes = kit_counter_new_with_combine_handler("memory.bytes", counter_bytes_combine_handler);
-    kit_memory_counters.calloc = kit_counter_new("memory.calloc");
-    kit_memory_counters.fail = kit_counter_new("memory.fail");
-    kit_memory_counters.free = kit_counter_new("memory.free");
-    kit_memory_counters.malloc = kit_counter_new("memory.malloc");
+    kit_memory_counters.bytes   = kit_counter_new_with_combine_handler("memory.bytes", counter_bytes_combine_handler);
+    kit_memory_counters.calloc  = kit_counter_new("memory.calloc");
+    kit_memory_counters.fail    = kit_counter_new("memory.fail");
+    kit_memory_counters.free    = kit_counter_new("memory.free");
+    kit_memory_counters.malloc  = kit_counter_new("memory.malloc");
     kit_memory_counters.realloc = kit_counter_new("memory.realloc");
+
+    sxe_log_control.level = SXE_LOG_LEVEL_INFORMATION;    // Default the level to INFO for this module.
+
+#ifdef __linux__
+    char proc_statm_path[PATH_MAX];
+    int  pid;
+
+    pid = getpid();
+    snprintf(proc_statm_path, sizeof(proc_statm_path), "/proc/%d/statm", pid);
+    proc_statm_fd = open(proc_statm_path, O_RDONLY);
+#endif
+
+#if SXE_DEBUG
+    const char *KIT_ALLOC_DIAGNOSTICS = getenv("KIT_ALLOC_DIAGNOSTICS");
+
+    if (KIT_ALLOC_DIAGNOSTICS && KIT_ALLOC_DIAGNOSTICS[0] && KIT_ALLOC_DIAGNOSTICS[0] != '0')
+        kit_alloc_diagnostics = 1;
+#endif
 }
 
 bool
@@ -61,13 +98,6 @@ kit_memory_counters_initialized(void)
 {
     return kit_counter_isvalid(kit_memory_counters.calloc);
 }
-
-#if SXE_DEBUG
-int kit_alloc_diagnostics;
-#define KIT_ALLOC_LOG(...) do { if (kit_alloc_diagnostics) SXEL6(__VA_ARGS__); } while (0)
-#else
-#define KIT_ALLOC_LOG(...) do { } while (0)
-#endif
 
 __attribute__((malloc)) void *
 KIT_ALLOC_MANGLE(kit_malloc)(size_t size KIT_ALLOC_SOURCE_PROTO)
@@ -77,7 +107,7 @@ KIT_ALLOC_MANGLE(kit_malloc)(size_t size KIT_ALLOC_SOURCE_PROTO)
     kit_counter_incr(KIT_COUNTER_MEMORY_MALLOC);
     if (result == NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock malloc() to create failure */
-    KIT_ALLOC_LOG("%s: %u: %p = kit_malloc(%zu)", file, line, result, size);
+    KIT_ALLOC_LOG("%s: %d: %p = kit_malloc(%zu)", file, line, result, size);
 
     return result;
 }
@@ -90,7 +120,7 @@ KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO)
     kit_counter_incr(KIT_COUNTER_MEMORY_CALLOC);
     if (result == NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock calloc() to create failure */
-    KIT_ALLOC_LOG("%s: %u: %p = kit_calloc(%zu, %zu)", file, line, result, num, size);
+    KIT_ALLOC_LOG("%s: %d: %p = kit_calloc(%zu, %zu)", file, line, result, num, size);
 
     return result;
 }
@@ -98,7 +128,7 @@ KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO)
 void
 KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO)
 {
-    KIT_ALLOC_LOG("%s: %u: kit_free(%p)", file, line, ptr);
+    KIT_ALLOC_LOG("%s: %d: kit_free(%p)", file, line, ptr);
     if (ptr) {
         kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
         SXEA6(!(((long)ptr) & 7), "ungranular free(%p)", ptr);
@@ -125,7 +155,7 @@ KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 
     if (result == NULL && (size || ptr == NULL))
         kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock realloc() to create failure */
-    KIT_ALLOC_LOG("%s: %u: %p = kit_realloc(%p, %zu)", file, line, result, ptr, size);
+    KIT_ALLOC_LOG("%s: %d: %p = kit_realloc(%p, %zu)", file, line, result, ptr, size);
 
     return result;
 }
@@ -150,7 +180,7 @@ KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
             }
         }
         if (result != ptr)
-            KIT_ALLOC_LOG("%s: %u: %p = kit_realloc(%p, %zu)", file, line, result, ptr, size);
+            KIT_ALLOC_LOG("%s: %d: %p = kit_realloc(%p, %zu)", file, line, result, ptr, size);
     } else {
         SXEA1(!size, "Cannot kit_reduce() NULL to size %zu", size);
         result = NULL;
@@ -170,12 +200,13 @@ KIT_ALLOC_MANGLE(kit_strdup)(const char *txt KIT_ALLOC_SOURCE_PROTO)
         kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock malloc() to create failure */
     else
         strcpy(result, txt);
-    KIT_ALLOC_LOG("%s: %u: %p = kit_strdup(%p[%zu])", file, line, result, txt, len + 1);
+    KIT_ALLOC_LOG("%s: %d: %p = kit_strdup(%p[%zu])", file, line, result, txt, len + 1);
 
     return result;
 }
 
 #if SXE_DEBUG
+
 /*-
  * The debug version of jemalloc is built with --enable-debug and
  * --enable-fill.  We enable junk and redzone by default so that we
@@ -192,20 +223,64 @@ KIT_ALLOC_MANGLE(kit_strdup)(const char *txt KIT_ALLOC_SOURCE_PROTO)
  *     je_free(ptr);
  */
 const char *je_malloc_conf = "junk:true,redzone:true";
+
+#else // For the non-debug build, the following diag wrappers are needed for openssl hooks
+
+void *
+kit_malloc_diag(size_t size, const char *file, int line)
+{
+    SXE_UNUSED_PARAMETER(file);
+    SXE_UNUSED_PARAMETER(line);
+    return kit_malloc(size);
+}
+
+void *
+kit_realloc_diag(void *ptr, size_t size, const char *file, int line)
+{
+    SXE_UNUSED_PARAMETER(file);
+    SXE_UNUSED_PARAMETER(line);
+    return kit_realloc(ptr, size);
+}
+
+void
+kit_free_diag(void *ptr, const char *file, int line)
+{
+    SXE_UNUSED_PARAMETER(file);
+    SXE_UNUSED_PARAMETER(line);
+    kit_free(ptr);
+}
+
 #endif
 
 size_t
 kit_allocated_bytes()
 {
-    size_t len, alloc;
-    uint64_t epoch;
+    static bool   kit_mib_init          = false;    // Set to true once memory mib ids are initialized
+    static size_t kit_epoch_mib[1];                 // Binary mib id of the "epoch"
+    static size_t kit_epoch_mib_len     = 1;        // Number of elements in the mib id
+    static size_t kit_allocated_mib[2];             // Binary mib id of "stats.allocated"
+    static size_t kit_allocated_mib_len = 2;        // Number of elements in the mib id
+    size_t        len, alloc;
+    uint64_t      epoch;
+
+    if (!kit_mib_init) {
+        // To optimize collection of je_malloc statistics, get binary MIB ids
+        //
+        SXEA1(!je_mallctlnametomib("epoch", kit_epoch_mib, &kit_epoch_mib_len)
+           && !je_mallctlnametomib("stats.allocated", kit_allocated_mib, &kit_allocated_mib_len),
+              "Failed to generated binary mib id for je_malloc's epoch or stats.allocated");
+        kit_mib_init = true;
+    }
 
     epoch = 1;
     len = sizeof(epoch);
-    je_mallctl("epoch", &epoch, &len, &epoch, len);
+    je_mallctlbymib(kit_epoch_mib, kit_epoch_mib_len, &epoch, &len, &epoch, len);
 
     len = sizeof(alloc);
-    je_mallctl("stats.allocated", &alloc, &len, NULL, 0);
+    je_mallctlbymib(kit_allocated_mib, kit_allocated_mib_len, &alloc, &len, NULL, 0);
+
+    if (alloc > kit_memory_allocated_max)
+        kit_memory_allocated_max = alloc;
 
     return alloc;
 }
@@ -229,4 +304,79 @@ kit_thread_allocated_bytes(void)
     }
 
     return *allocatedp - *deallocatedp;
+}
+
+bool
+kit_memory_log_growth(void)
+{
+    static size_t   jemalloc_allocated_max = 0;
+    size_t          jemalloc_allocated_cur = kit_allocated_bytes();
+    bool            growth                 = false;
+
+    if (jemalloc_allocated_cur > jemalloc_allocated_max) {
+        SXEL4("Maximum memory allocated via jemalloc %zu (previous maximum %zu)", jemalloc_allocated_cur, jemalloc_allocated_max);
+        jemalloc_allocated_max = jemalloc_allocated_cur;
+        growth                 = true;
+    }
+
+#ifdef __GLIBC__
+    static size_t   glibc_allocated_max = 0;    // High watermark of glibc bytes allocated
+    struct mallinfo glibc_mallinfo;
+
+    glibc_mallinfo = mallinfo();
+
+    if ((size_t)glibc_mallinfo.uordblks > glibc_allocated_max) {
+        SXEL4("Maximum memory allocated via glibc %zu (previous maximum %zu)", (size_t)glibc_mallinfo.uordblks,
+              glibc_allocated_max);
+        glibc_allocated_max = (size_t)glibc_mallinfo.uordblks;
+        growth              = true;
+    }
+#endif
+
+#ifdef __linux__
+    static size_t rss_max = 0;    // High watermark of RSS pages allocated
+    long long     rss_cur;
+    char          buf[256];       // Buffer for /proc/<pid>/statm contents (e.g. "14214701 8277571 1403 269 0 14138966 0")
+    ssize_t       len;
+    char         *rss_str;
+    char         *end_ptr;
+
+    // If the /proc/<pid>/statm is open, seek to start and read contents
+    if (proc_statm_fd >= 0 && lseek(proc_statm_fd, 0, SEEK_SET) != (off_t)-1
+     && (len = read(proc_statm_fd, buf, sizeof(buf) - 1)) >= 0) {
+        buf[len] = '\0';
+
+        if ((rss_str = strchr(buf, ' '))) {    // Find the RSS number in the string
+            rss_str++;
+
+            // Try to convert to a number and, if a new maximum, log it
+            if ((rss_cur = strtoll(rss_str, &end_ptr, 10)) > 0 && *end_ptr == ' ' && (size_t)rss_cur > rss_max) {
+                SXEL4("Maximum memory allocated in RSS pages %zu (previous maximum %zu)", (size_t)rss_cur, rss_max);
+                rss_max = (size_t)rss_cur;
+                growth  = true;
+            }
+        }
+    }
+#endif
+
+    return growth;
+}
+
+static void
+kit_memory_stats_line(void *file, const char *line)
+{
+    fputs(line, (FILE *)file);
+}
+
+bool
+kit_memory_stats(const char *file, const char *options)
+{
+    FILE *fp = fopen(file, "w");
+
+    if (fp) {
+        je_malloc_stats_print(kit_memory_stats_line, fp, options ?: "gblxe");
+        fclose(fp);
+    }
+
+    return fp != NULL;
 }

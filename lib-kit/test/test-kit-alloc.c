@@ -67,7 +67,7 @@ counter_callback(void *v, const char *key, const char *val)
 }
 
 int
-main(int argc, char **argv)
+main(void)
 {
     size_t talloc1, talloc2, talloc3;
     size_t alloc1, alloc2, alloc3;
@@ -75,10 +75,7 @@ main(int argc, char **argv)
     char *ptr1, *ptr2;
     int failures;
 
-    SXE_UNUSED_PARAMETER(argc);
-    SXE_UNUSED_PARAMETER(argv);
-
-    plan_tests(71);
+    plan_tests(73);
     kit_memory_counters_init();
     kit_counters_initialize(1);
     clear_counters();
@@ -96,7 +93,7 @@ main(int argc, char **argv)
     ok(alloc2 - alloc1 >= 100, "kit_allocated_bytes() reports that alloc2 (%zu) is at least 100 greater than alloc1 (%zu)", alloc2, alloc1);
     ok(talloc2 - talloc1 >= 100, "kit_thread_allocated_bytes() reports that talloc2 (%zu) is at least 100 greater than talloc1 (%zu)", talloc2, talloc1);
 
-    ptr2 = kit_malloc(0);
+    ptr2 = kit_malloc_diag(0, __FILE__, __LINE__);    // Call via the wrapper (used in release build by openssl)
     ok(ptr1 != NULL, "kit_malloc(0) returns a pointer");
     check_counters("After malloc(0)", 2, 0, 0, 0, 0);
 
@@ -110,7 +107,7 @@ main(int argc, char **argv)
     ok(alloc3 - alloc2 >= 200, "kit_allocated_bytes() reports that alloc3 (%zu) is at least 200 greater than alloc2 (%zu)", alloc3, alloc2);
     ok(talloc3 - talloc2 >= 200, "kit_thread_allocated_bytes() reports that talloc3 (%zu) is at least 200 greater than talloc2 (%zu)", talloc3, talloc2);
 
-    kit_free(ptr1);
+    kit_free_diag(ptr1, __FILE__, __LINE__);    // Call via the wrapper (used in release build by openssl)
     check_counters("After one free()", 2, 1, 0, 2, 0);
 
     ptr2 = kit_realloc(ptr2, 10);
@@ -120,7 +117,7 @@ main(int argc, char **argv)
     ok(ptr1 == NULL, "realloc(..., 0) returns NULL");
     check_counters("After a realloc(..., 0)", 2, 1, 1, 3, 0);
 
-    ptr1 = kit_realloc(NULL, 0);
+    ptr1 = kit_realloc_diag(NULL, 0, __FILE__, __LINE__);    // Call via the wrapper (used in release build by openssl)
     check_counters("After a realloc(NULL, 0)", 3, 1, 1, 3, 0);
 
     kit_free(NULL);
@@ -149,5 +146,7 @@ main(int argc, char **argv)
     is(cg.fail, failures, "Fail says %d", failures);
     is(cg.wtf, 0, "WTF says 0");
 
+    ok(kit_memory_log_growth(),                  "Logged growth in allocated memory");
+    ok(kit_memory_stats("jemalloc.stats", NULL), "Created a statistics file");
     return exit_status();
 }
