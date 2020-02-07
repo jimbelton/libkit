@@ -1,11 +1,12 @@
 #ifndef KIT_ALLOC_H
 #define KIT_ALLOC_H
 
-#include "kit-counters.h"
-
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
+#include "kit-counters.h"
+#include "sxe-log.h"
 
 struct kit_memory_counters {
     kit_counter_t bytes;
@@ -46,9 +47,9 @@ extern int kit_alloc_diagnostics;
 #define KIT_ALLOC_MANGLE(name) name
 #define KIT_ALLOC_SUFFIX
 
-extern void * kit_malloc_diag(size_t size, const char *file, int line);
-extern void * kit_realloc_diag(void *ptr, size_t size, const char *file, int line);
-extern void   kit_free_diag(void *ptr, const char *file, int line);
+extern void *kit_malloc_diag(size_t size, const char *file, int line);
+extern void *kit_realloc_diag(void *ptr, size_t size, const char *file, int line);
+extern void  kit_free_diag(void *ptr, const char *file, int line);
 #endif
 
 extern void kit_memory_counters_init(void);
@@ -61,7 +62,7 @@ extern __attribute__((malloc)) char *KIT_ALLOC_MANGLE(kit_strdup)(const char *tx
 extern __attribute__((malloc)) void *KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO);
 extern void *KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO);
 extern void KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO);
-extern bool kit_memory_log_growth(void);
-extern bool kit_memory_stats(const char *file, const char *options);
+extern bool kit_memory_log_growth(__printflike(1, 2) int (*printer)(const char *format, ...));
+extern bool kit_memory_log_stats(__printflike(1, 2) int (*printer)(const char *format, ...), const char *options);
 
 #endif

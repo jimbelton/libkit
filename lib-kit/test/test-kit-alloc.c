@@ -146,7 +146,9 @@ main(void)
     is(cg.fail, failures, "Fail says %d", failures);
     is(cg.wtf, 0, "WTF says 0");
 
-    ok(kit_memory_log_growth(),                  "Logged growth in allocated memory");
-    ok(kit_memory_stats("jemalloc.stats", NULL), "Created a statistics file");
+    void *mem = malloc(1);    // Force some glibc memory growth
+    ok(kit_memory_log_growth(printf),  "Logged growth in allocated memory");
+    ok(kit_memory_log_stats(printf, NULL), "Created a statistics file");
+    free(mem);
     return exit_status();
 }

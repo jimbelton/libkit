@@ -74,8 +74,6 @@ kit_memory_counters_init(void)
     kit_memory_counters.malloc  = kit_counter_new("memory.malloc");
     kit_memory_counters.realloc = kit_counter_new("memory.realloc");
 
-    sxe_log_control.level = SXE_LOG_LEVEL_INFORMATION;    // Default the level to INFO for this module.
-
 #ifdef __linux__
     char proc_statm_path[PATH_MAX];
     int  pid;
@@ -253,7 +251,7 @@ kit_free_diag(void *ptr, const char *file, int line)
 #endif
 
 size_t
-kit_allocated_bytes()
+kit_allocated_bytes(void)
 {
     static bool   kit_mib_init          = false;    // Set to true once memory mib ids are initialized
     static size_t kit_epoch_mib[1];                 // Binary mib id of the "epoch"
@@ -307,14 +305,15 @@ kit_thread_allocated_bytes(void)
 }
 
 bool
-kit_memory_log_growth(void)
+kit_memory_log_growth(__printflike(1, 2) int (*printer)(const char *format, ...))
 {
-    static size_t   jemalloc_allocated_max = 0;
-    size_t          jemalloc_allocated_cur = kit_allocated_bytes();
-    bool            growth                 = false;
+    static size_t jemalloc_allocated_max = 0;
+    size_t        jemalloc_allocated_cur = kit_allocated_bytes();
+    bool          growth                 = false;
 
     if (jemalloc_allocated_cur > jemalloc_allocated_max) {
-        SXEL4("Maximum memory allocated via jemalloc %zu (previous maximum %zu)", jemalloc_allocated_cur, jemalloc_allocated_max);
+        (*printer)("Maximum memory allocated via jemalloc %zu (previous maximum %zu)\n", jemalloc_allocated_cur,
+                   jemalloc_allocated_max);
         jemalloc_allocated_max = jemalloc_allocated_cur;
         growth                 = true;
     }
@@ -326,8 +325,8 @@ kit_memory_log_growth(void)
     glibc_mallinfo = mallinfo();
 
     if ((size_t)glibc_mallinfo.uordblks > glibc_allocated_max) {
-        SXEL4("Maximum memory allocated via glibc %zu (previous maximum %zu)", (size_t)glibc_mallinfo.uordblks,
-              glibc_allocated_max);
+        (*printer)("Maximum memory allocated via glibc %zu (previous maximum %zu)\n", (size_t)glibc_mallinfo.uordblks,
+                   glibc_allocated_max);
         glibc_allocated_max = (size_t)glibc_mallinfo.uordblks;
         growth              = true;
     }
@@ -351,7 +350,7 @@ kit_memory_log_growth(void)
 
             // Try to convert to a number and, if a new maximum, log it
             if ((rss_cur = strtoll(rss_str, &end_ptr, 10)) > 0 && *end_ptr == ' ' && (size_t)rss_cur > rss_max) {
-                SXEL4("Maximum memory allocated in RSS pages %zu (previous maximum %zu)", (size_t)rss_cur, rss_max);
+                (*printer)("Maximum memory allocated in RSS pages %zu (previous maximum %zu)\n", (size_t)rss_cur, rss_max);
                 rss_max = (size_t)rss_cur;
                 growth  = true;
             }
@@ -362,21 +361,34 @@ kit_memory_log_growth(void)
     return growth;
 }
 
+struct printer_visitor {
+    int                      written;
+    __printflike(1, 2) int (*printer)(const char *format, ...);
+};
+
 static void
-kit_memory_stats_line(void *file, const char *line)
+memory_stats_line(void *visitor_void, const char *line)
 {
-    fputs(line, (FILE *)file);
+    struct printer_visitor *visitor = visitor_void;
+
+    if (visitor->written < 0)
+        return;    /* COVERAGE EXCLUSION - Test printer failure case */
+
+    int written = (*visitor->printer)("%s", line);
+
+    if (written >= 0)
+        visitor->written += written;
+    else
+        visitor->written  = written;    /* COVERAGE EXCLUSION - Test printer failure case */
 }
 
 bool
-kit_memory_stats(const char *file, const char *options)
+kit_memory_log_stats(__printflike(1, 2) int (*printer)(const char *format, ...), const char *options)
 {
-    FILE *fp = fopen(file, "w");
+    struct printer_visitor visitor;
 
-    if (fp) {
-        je_malloc_stats_print(kit_memory_stats_line, fp, options ?: "gblxe");
-        fclose(fp);
-    }
-
-    return fp != NULL;
+    visitor.written = 0;
+    visitor.printer = printer;
+    je_malloc_stats_print(memory_stats_line, &visitor, options ?: "gblxe");
+    return visitor.written > 0;
 }
