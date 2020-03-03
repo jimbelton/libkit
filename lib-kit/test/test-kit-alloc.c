@@ -66,6 +66,26 @@ counter_callback(void *v, const char *key, const char *val)
         }
 }
 
+static int  length = 0;
+static char buffer[4096];
+
+static __printflike(1, 2) int
+test_printf(const char *format, ...)
+{
+    va_list ap;
+    int     newlen;
+
+    va_start(ap, format);
+    newlen = vsnprintf(buffer + length, sizeof(buffer) - length, format, ap);
+    va_end(ap);
+
+    if (newlen > 0) {
+        length = newlen < (int)(sizeof(buffer) - length) ? length + newlen : (int)sizeof(buffer);
+    }
+
+    return newlen;
+}
+
 int
 main(void)
 {
@@ -75,7 +95,7 @@ main(void)
     char *ptr1, *ptr2;
     int failures;
 
-    plan_tests(73);
+    plan_tests(75);
     kit_memory_counters_init();
     kit_counters_initialize(1);
     clear_counters();
@@ -147,8 +167,13 @@ main(void)
     is(cg.wtf, 0, "WTF says 0");
 
     void *mem = malloc(1);    // Force some glibc memory growth
-    ok(kit_memory_log_growth(printf),  "Logged growth in allocated memory");
-    ok(kit_memory_log_stats(printf, NULL), "Created a statistics file");
+    ok(kit_memory_log_growth(test_printf), "Logged growth in allocated memory");
+    is_strncmp(buffer, "Maximum memory allocated via jemalloc", sizeof("Maximum memory allocated via jemalloc") - 1,
+               "Expected start of output found");
+    length = 0;
+    ok(kit_memory_log_stats(test_printf, NULL), "Created a statistics file");
+    is_strncmp(buffer, "___ Begin jemalloc statistics ___", sizeof("___ Begin jemalloc statistics ___") - 1,
+               "Expected start of output found");
     free(mem);
     return exit_status();
 }
