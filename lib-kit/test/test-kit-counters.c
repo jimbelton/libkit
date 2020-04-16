@@ -1,4 +1,4 @@
-#include <sxe-util.h>
+#include <sxe-log.h>
 #include <string.h>
 #include <tap.h>
 #include <pthread.h>
@@ -54,7 +54,7 @@ mibfn_thispath(kit_counter_t c, const char *subtree, const char *mib, void *v, k
      */
 
     SXEA6(kit_counters_usable(), "%s(): Not initialized!", __FUNCTION__);
-    SXE_UNUSED_ARGUMENT(threadnum);
+    SXE_UNUSED_PARAMETER(threadnum);
 
     if ((submiblen = strlen(mib)) < sizeof(submib) - 16) {
         strcpy(submib, mib);
