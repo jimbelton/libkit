@@ -2,11 +2,14 @@
 #include "kit-alloc.h"
 
 #include <fcntl.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sxe-util.h>
 #include <jemalloc.h>
+
+#ifdef __linux__
+#include <malloc.h>
+#endif
 
 #ifdef __GLIBC__
 #pragma GCC diagnostic ignored "-Waggregate-return"    // To allow use of glibc mallinfo

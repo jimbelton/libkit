@@ -1,4 +1,8 @@
 #include <errno.h>
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <netinet/in.h>
+#endif
 #include <netinet/ip.h>
 #include <string.h>
 #include <mock.h>
@@ -38,7 +42,11 @@ kit_udp_socket(int domain, unsigned flags)
         }
 
         if (flags & KIT_UDP_TRANSPARENT) {
+#ifdef IP_TRANSPARENT
             SXEA1(setsockopt(fd, IPPROTO_IP, IP_TRANSPARENT, &enabled, sizeof(enabled)) >= 0, "Failed to enable transparent proxying");  /* COVERAGE EXCLUSION: Must be priveleged to set IP_TRANSPARENT */
+#else
+            SXEA1(0, "IP_TRANSPARENT does not exist on this platform");									/* COVERAGE EXCLUSION: impossible to test in our current test infastructure */
+#endif
         }
     }
 
