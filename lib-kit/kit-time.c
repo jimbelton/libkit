@@ -2,8 +2,8 @@
 #include "kit.h"
 
 /* Cache time for fast access */
-static __thread int32_t cached_seconds;
-static __thread int64_t cached_nanoseconds;
+static __thread uint32_t cached_seconds;
+static __thread uint64_t cached_nanoseconds;
 
 const char *
 kit_clocktype(void)
@@ -17,7 +17,7 @@ kit_clocktype(void)
 
 /* Calculate and return current seconds and nanoseconds */
 static void
-kit_time_get(int32_t *seconds, int64_t *nanoseconds)
+kit_time_get(uint32_t *seconds, uint64_t *nanoseconds)
 {
 #ifdef CLOCK_MONOTONIC
     struct timespec ts;
@@ -29,7 +29,7 @@ kit_time_get(int32_t *seconds, int64_t *nanoseconds)
         *seconds = ts.tv_sec;
 
     if (nanoseconds != NULL)
-        *nanoseconds = ts.tv_sec * 1000000000LL + ts.tv_nsec;
+        *nanoseconds = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 #else
     struct timeval tv;
 
@@ -40,17 +40,17 @@ kit_time_get(int32_t *seconds, int64_t *nanoseconds)
         *seconds = tv.tv_sec;
 
     if (nanoseconds != NULL)
-        *nanoseconds = tv.tv_sec * 1000000000LL + tv.tv_usec * 1000;
+        *nanoseconds = tv.tv_sec * 1000000000ULL + tv.tv_usec * 1000;
 #endif
 }
 
-int64_t
+uint64_t
 kit_time_cached_nsec(void)
 {
     return cached_nanoseconds;
 }
 
-int32_t
+uint32_t
 kit_time_cached_sec(void)
 {
     return cached_seconds;
@@ -64,10 +64,10 @@ kit_time_cached_update(void)
 }
 
 /* Return current nanoseconds */
-int64_t
+uint64_t
 kit_time_nsec(void)
 {
-    int64_t nanoseconds = 0;
+    uint64_t nanoseconds = 0;
 
     kit_time_get(NULL, &nanoseconds);
 
@@ -75,10 +75,10 @@ kit_time_nsec(void)
 }
 
 /* Return current seconds */
-int32_t
+uint32_t
 kit_time_sec(void)
 {
-    int32_t seconds = 0;
+    uint32_t seconds = 0;
 
     kit_time_get(&seconds, NULL);
 
