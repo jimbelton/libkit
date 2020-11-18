@@ -102,7 +102,7 @@ static const uint8_t base32hextxtmap[256] = {
 };
 
 static struct basecfg base32hexcfg = {
-    /* rfc2938 */
+    /* RFC 2938 */
     .bits = 32,
     .wantpadding = 0,
     .txtmap = base32hextxtmap,
@@ -129,11 +129,38 @@ static const uint8_t base64txtmap[256] = {
 };
 
 static struct basecfg base64cfg = {
-    /* rfc3548 section 3 */
-    .bits = WS,
+    /* RFC 3548 section 3 */
+    .bits = 64,
     .wantpadding = 1,
     .txtmap = base64txtmap,
     .binmap = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+};
+
+static const uint8_t base64urltxtmap[256] = {
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, WS, WS, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    WS, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, 62, IN, IN,    //   . . . . . . . . . . . . - . .
+    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, IN, IN, IN, EQ, IN, IN,    // 0 1 2 3 4 5 6 7 8 9 . . . = . .
+    IN,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,    // @ A B C D E F G H I J K L M N O
+    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, IN, IN, IN, IN, 63,    // P Q R S T U V W X Y Z . . . . _
+    IN, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,    // ` a b c d e f g h i j k l m n o
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, IN, IN, IN, IN, IN,    // p q r s t u v w x y z . . . . .
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN,
+    IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN, IN
+};
+
+static struct basecfg base64urlcfg = {
+    /* RFC 3548 section 4 */
+    .bits = 64,
+    .wantpadding = 0,
+    .txtmap = base64urltxtmap,
+    .binmap = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
 };
 
 static const char *
@@ -351,4 +378,16 @@ const char *
 kit_base64decode(uint8_t *out, size_t *olen, const char *in, size_t *ilen, unsigned flags)
 {
     return decode(out, olen, in, ilen, flags, &base64cfg);
+}
+
+const char *
+kit_base64urlencode(char *out, size_t *olen, const uint8_t *in, size_t *ilen)
+{
+    return encode(out, olen, in, ilen, &base64urlcfg);
+}
+
+const char *
+kit_base64urldecode(uint8_t *out, size_t *olen, const char *in, size_t *ilen)
+{
+    return decode(out, olen, in, ilen, KIT_BASE_DECODE_DEFAULT, &base64urlcfg);
 }
