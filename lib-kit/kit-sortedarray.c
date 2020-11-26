@@ -1,26 +1,10 @@
+#include <mockfail.h>
 #include <stdint.h>
 #include <string.h>
 #include <sxe-log.h>
 
 #include "kit.h"
 #include "kit-alloc.h"
-
-static void *kit_sortedarray_realloc(void *memory, size_t size) {
-    return kit_realloc(memory, size);
-}
-
-static void *(*reallocate)(void *, size_t) = kit_sortedarray_realloc;
-
-/**
- * Allow use of an alternate reallocator
- */
-kit_realloc_ptr_t
-kit_sortedarray_override_realloc(void *(*new_realloc)(void *, size_t))
-{
-    void *(*old_realloc)(void *, size_t) = reallocate;
-    reallocate = new_realloc;
-    return old_realloc;
-}
 
 /**
  * Add an element to a sorted array
@@ -81,7 +65,7 @@ kit_sortedarray_add(const struct kit_sortedelement_class *class, void **array, u
 
     // First time through, allocate the array; if more space is needed, reallocate
     if (!*array || more) {
-        if (!(new_array = (*reallocate)(*array, (*alloc + more) * class->size))) {
+        if (!(new_array = MOCKFAIL(kit_sortedarray_add, NULL, kit_realloc(*array, (*alloc + more) * class->size)))) {
             SXEL2("Failed to allocate array of %u %zu byte elements", *alloc + more, class->size);
             return false;
         }

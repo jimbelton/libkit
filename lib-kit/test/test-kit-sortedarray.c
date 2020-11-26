@@ -1,15 +1,8 @@
+#include <mockfail.h>
 #include <stdlib.h>
 #include <tap.h>
 
 #include "kit.h"
-
-static void *
-failing_realloc(void *memory, size_t size)
-{
-    (void)memory;
-    (void)size;
-    return NULL;
-}
 
 static int
 unsigned_cmp(const void *lhs, const void *rhs)
@@ -40,9 +33,9 @@ main(void)
     unsigned  alloc = 7;
     unsigned  value = 2;
 
-    kit_realloc_ptr_t old_realloc = kit_sortedarray_override_realloc(failing_realloc);
+    MOCKFAIL_START_TESTS(1, kit_sortedarray_add);
     ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to add 2 (realloc failed)");
-    kit_sortedarray_override_realloc(old_realloc);
+    MOCKFAIL_END_TESTS();
 
     ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 2 (first element)");
     ok(array,                                                                        "Array was allocated");

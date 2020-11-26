@@ -1,8 +1,8 @@
+#include <mockfail.h>
 #include <sxe-util.h>
 #include <string.h>
 #include <tap.h>
 
-#include "kit-mock.h"
 #include "kit-alloc.h"
 
 static void
@@ -144,7 +144,7 @@ main(void)
     check_counters("After a free(NULL)", 3, 1, 1, 3, 0);
 
     failures = 0;
-    MOCKFAIL_START_TESTS(1, KIT_REDUCE_REALLOC);
+    MOCKFAIL_START_TESTS(1, KIT_ALLOC_MANGLE(kit_reduce));
     is(kit_reduce(ptr1, 1), ptr1, "When kit_reduce() fails to realloc(), it returns the same pointer");
     failures++;
     MOCKFAIL_END_TESTS();

@@ -20,7 +20,7 @@ main(void)
 
     plan_tests(12);
 
-    bzero(&fsev, sizeof (struct kit_fsevent));
+    bzero(&fsev, sizeof(struct kit_fsevent));
     kit_fsevent_init(&fsev);
     kit_fsevent_iterator_init(&iter);
 

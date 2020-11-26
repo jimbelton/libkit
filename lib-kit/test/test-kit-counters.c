@@ -4,7 +4,6 @@
 #include <pthread.h>
 
 #include "kit.h"
-#include "kit-mock.h"
 #include "kit-counters.h"
 
 struct mycounters {

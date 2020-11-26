@@ -8,4 +8,7 @@ remove_to = $(if $(filter $(1),$(2)),$(call remove_to,$(1),$(wordlist 2,$(words 
 ALL_LIBRARIES = kit
 LIB_DEPENDENCIES = $(call remove_to,$(LIBRARIES),$(ALL_LIBRARIES))
 
+CONVENTION_OPTOUT_LIST = lib-kit/kit-queue.h
+MAKE_ALLOW_LOWERCASE_TYPEDEF = 1
+
 include $(TOP.dir)/mak/mak-common.mak

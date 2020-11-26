@@ -1,7 +1,7 @@
-#include "kit-mock.h"
 #include "kit-alloc.h"
 
 #include <fcntl.h>
+#include <mockfail.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sxe-util.h>
@@ -172,7 +172,7 @@ KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
      * - If realloc() fails, return the original
      */
     if (ptr) {
-        if ((result = MOCKFAIL(KIT_REDUCE_REALLOC, NULL, je_realloc(ptr, size))) == NULL) {
+        if ((result = MOCKFAIL(KIT_ALLOC_MANGLE(kit_reduce), NULL, je_realloc(ptr, size))) == NULL) {
             if (size == 0)
                 kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
             else {
