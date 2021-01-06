@@ -76,6 +76,7 @@ extern const struct kit_guid kit_guid_nil;    // The nil GUID (All bytes are 0)
 extern const struct kit_deviceid kit_deviceid_nil;    // The nil DEVICEID (All bytes are 0)
 
 #include "kit-base-encode-proto.h"
+#include "kit-basename-proto.h"
 #include "kit-guid-proto.h"
 #include "kit-deviceid-proto.h"
 #include "kit-hostname-proto.h"
