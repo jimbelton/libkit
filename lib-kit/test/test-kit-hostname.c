@@ -16,10 +16,10 @@ main(int argc, char **argv)
     plan_tests(3);
 
     host = kit_hostname();
-    ok(host, "kit_hostname() returns some name ('%s')", host);
+    ok(host, "kit_hostname() returns some name ('%s')", host ?: "NULL");
 
     host = kit_short_hostname();
-    ok(host, "kit_short_hostname() returns some name ('%s')", host);
+    ok(host, "kit_short_hostname() returns some name ('%s')", host ?: "NULL");
 
     for (dots = 0; (dot = strchr(host, '.')) != NULL; host = dot + 1, dots++)
         ;

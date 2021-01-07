@@ -14,7 +14,11 @@
 #define TEST_MESSAGE_SIZE (sizeof(TEST_MESSAGE) - 1)
 
 static int
+#if __GNUC__ >= 9
+test_gettimeofday(struct timeval *tv, void *__restrict tz)
+#else
 test_gettimeofday(struct timeval *tv, struct timezone *tz)
+#endif
 {
     (void)tz;
     memset(tv, 0, sizeof(*tv));    // Current time is Jan 1 1970 UTC
