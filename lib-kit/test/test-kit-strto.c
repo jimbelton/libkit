@@ -14,7 +14,7 @@ main(int argc, char **argv)
     SXE_UNUSED_PARAMETER(argc);
     SXE_UNUSED_PARAMETER(argv);
 
-    plan_tests(42);
+    plan_tests(50);
 
     diag("Verify normal valid parsing");
     {
@@ -84,6 +84,18 @@ main(int argc, char **argv)
 
         is(kit_strtoul("  ++0", NULL, 0), 0, "Multiple +/- doesn't parse");
         is(errno, EINVAL, "invalid value sets errno");
+
+        is(kit_strtoul("0xffffffffffffffff", NULL, 16), ULONG_MAX, "Test for upper bound");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtoul("0x1ffffffffffffffff", NULL, 16), ULONG_MAX, "Test for overflow");
+        is(errno, ERANGE, "There was an overflow and errno was set to ERANGE");
+
+        is(kit_strtoull("0xffffffffffffffff", NULL, 16), ULLONG_MAX, "Test for upper bound");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtoull("0x1ffffffffffffffff", NULL, 16), ULLONG_MAX, "Test for overflow");
+        is(errno, ERANGE, "There was an overflow and errno was set to ERANGE");
     }
 
     return exit_status();
