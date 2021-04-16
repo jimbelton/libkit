@@ -54,8 +54,10 @@ int kit_alloc_diagnostics;
 #define KIT_ALLOC_LOG(...) do { } while (0)
 #endif
 
-struct kit_memory_counters kit_memory_counters;             // global
-size_t                     kit_memory_allocated_max = 0;    // This tracks the high watermark ever allocated with jemalloc
+struct kit_memory_counters kit_memory_counters;                    // Global counters
+size_t                     kit_memory_allocated_max    = 0;        // Tracks the high watermark ever allocated with jemalloc
+static bool                kit_memory_assert_on_enomem = false;    // By default, return NULL on failure to allocate memory
+static bool                kit_memory_is_initialized   = false;    // Set when kit-memory has been initialized
 
 #ifdef __linux__
 static int proc_statm_fd = -1;    // Open file descriptor on /proc/<pid>/statm; must be opened before calling chroot
@@ -67,9 +69,28 @@ counter_bytes_combine_handler(int threadnum)
     return threadnum <= 0 ? kit_allocated_bytes() : 0;
 }
 
+/**
+ * Initialize the kit memory management interface; this should done once, normally on an application wide basis
+ *
+ * @param assert_on_enomem true to enable assertions on memory allocation failure, false (default) to make sure no one changes
+ */
+void
+kit_memory_initialize(bool assert_on_enomem)
+{
+    SXEA1(!kit_memory_is_initialized, "Kit memory has already been initialized");
+    kit_memory_assert_on_enomem = assert_on_enomem;
+    kit_memory_is_initialized   = true;
+}
+
+/**
+ * Initialize memory interface counters
+ *
+ * @note this is independent of module initialization and is needed for memory leak checking in unit tests
+ */
 void
 kit_memory_counters_init(void)
 {
+    SXEA1(!kit_counter_isvalid(kit_memory_counters.calloc), "Kit memory counters are already initialized");
     kit_memory_counters.bytes   = kit_counter_new_with_combine_handler("memory.bytes", counter_bytes_combine_handler);
     kit_memory_counters.calloc  = kit_counter_new("memory.calloc");
     kit_memory_counters.fail    = kit_counter_new("memory.fail");
@@ -105,11 +126,13 @@ KIT_ALLOC_MANGLE(kit_malloc)(size_t size KIT_ALLOC_SOURCE_PROTO)
 {
     void *result = je_malloc(size);
 
+    SXEA1(!kit_memory_assert_on_enomem || result, "%s: failed to allocate %zu bytes of memory", __FUNCTION__, size);
     kit_counter_incr(KIT_COUNTER_MEMORY_MALLOC);
+
     if (result == NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock malloc() to create failure */
-    KIT_ALLOC_LOG("%s: %d: %p = kit_malloc(%zu)", file, line, result, size);
 
+    KIT_ALLOC_LOG("%s: %d: %p = kit_malloc(%zu)", file, line, result, size);
     return result;
 }
 
@@ -118,11 +141,13 @@ KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO)
 {
     void *result = je_calloc(num, size);
 
+    SXEA1(!kit_memory_assert_on_enomem || result, "%s: failed to allocate %zu %zu byte objects", __FUNCTION__, num, size);
     kit_counter_incr(KIT_COUNTER_MEMORY_CALLOC);
+
     if (result == NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock calloc() to create failure */
-    KIT_ALLOC_LOG("%s: %d: %p = kit_calloc(%zu, %zu)", file, line, result, num, size);
 
+    KIT_ALLOC_LOG("%s: %d: %p = kit_calloc(%zu, %zu)", file, line, result, num, size);
     return result;
 }
 
@@ -130,6 +155,7 @@ void
 KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO)
 {
     KIT_ALLOC_LOG("%s: %d: kit_free(%p)", file, line, ptr);
+
     if (ptr) {
         kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
         SXEA6(!(((long)ptr) & 7), "ungranular free(%p)", ptr);
@@ -139,13 +165,17 @@ KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO)
 }
 
 /*-
- * Special case for realloc() since it can behave like malloc()
- * or free() !
+ * Special case for realloc() since it can behave like malloc() or free() !
  */
 void *
 KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 {
     void *result = je_realloc(ptr, size);
+
+    if (result == NULL && (size || ptr == NULL)) {
+        SXEA1(!kit_memory_assert_on_enomem, "%s: failed to reallocate object to %zu bytes", __FUNCTION__, size);
+        kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock realloc() to create failure */
+    }
 
     if (ptr == NULL && result != NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_MALLOC);
@@ -154,10 +184,7 @@ KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
     else
         kit_counter_incr(KIT_COUNTER_MEMORY_REALLOC);
 
-    if (result == NULL && (size || ptr == NULL))
-        kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock realloc() to create failure */
     KIT_ALLOC_LOG("%s: %d: %p = kit_realloc(%p, %zu)", file, line, result, ptr, size);
-
     return result;
 }
 
@@ -180,6 +207,7 @@ KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
                 result = ptr;
             }
         }
+
         if (result != ptr)
             KIT_ALLOC_LOG("%s: %d: %p = kit_realloc(%p, %zu)", file, line, result, ptr, size);
     } else {
@@ -193,16 +221,20 @@ KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 __attribute__((malloc)) char *
 KIT_ALLOC_MANGLE(kit_strdup)(const char *txt KIT_ALLOC_SOURCE_PROTO)
 {
-    size_t len = strlen(txt);
-    void *result = je_malloc(len + 1);
+    size_t len    = strlen(txt);
+    void  *result = je_malloc(len + 1);
+
+    if (result == NULL) {
+        SXEA1(!kit_memory_assert_on_enomem, "%s: failed to allocate %zu bytes of memory", __FUNCTION__, len + 1);
+        kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock malloc() to create failure */
+    }
 
     kit_counter_incr(KIT_COUNTER_MEMORY_MALLOC);
-    if (result == NULL)
-        kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);    /* COVERAGE EXCLUSION: todo: mock malloc() to create failure */
-    else
-        strcpy(result, txt);
-    KIT_ALLOC_LOG("%s: %d: %p = kit_strdup(%p[%zu])", file, line, result, txt, len + 1);
 
+    if (result)
+        strcpy(result, txt);
+
+    KIT_ALLOC_LOG("%s: %d: %p = kit_strdup(%p[%zu])", file, line, result, txt, len + 1);
     return result;
 }
 

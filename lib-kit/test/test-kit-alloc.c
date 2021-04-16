@@ -96,11 +96,13 @@ main(void)
     int failures;
 
     plan_tests(75);
+
     kit_memory_counters_init();
+    ok(kit_memory_counters_initialized(), "Memory counters are initialized");
+
+    kit_memory_initialize(false);    // Initialize with no aborts; this will call kit_memory_counters_init again, which is safe
     kit_counters_initialize(1);
     clear_counters();
-
-    ok(kit_memory_counters_initialized(), "Memory counters are initialized");
 
     alloc1 = kit_allocated_bytes();
     talloc1 = kit_thread_allocated_bytes();

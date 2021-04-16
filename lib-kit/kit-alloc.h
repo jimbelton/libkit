@@ -52,6 +52,7 @@ extern void *kit_realloc_diag(void *ptr, size_t size, const char *file, int line
 extern void  kit_free_diag(void *ptr, const char *file, int line);
 #endif
 
+extern void kit_memory_initialize(bool assert_on_enomem);
 extern void kit_memory_counters_init(void);
 extern bool kit_memory_counters_initialized(void);
 extern size_t kit_allocated_bytes(void);
