@@ -30,7 +30,7 @@ extern size_t                     kit_memory_max_allocated;
 #if SXE_DEBUG
 /* Use bin/kit-alloc-analyze to parse kit_alloc_diagnostics lines */
 extern int kit_alloc_diagnostics;
-#define KIT_ALLOC_SET_LOG(n) do { kit_alloc_diagnostics = (n); } while (0)
+#define KIT_ALLOC_SET_LOG(n) do { kit_alloc_diagnostics = (n); } while (0)    // Turn kit_alloc log messages on/off in debug
 #define KIT_ALLOC_SOURCE_PROTO , const char *file, int line
 #define KIT_ALLOC_MANGLE(name) name ## _diag
 

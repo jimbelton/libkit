@@ -154,12 +154,15 @@ KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO)
 void
 KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO)
 {
-    KIT_ALLOC_LOG("%s: %d: kit_free(%p)", file, line, ptr);
-
     if (ptr) {
+        KIT_ALLOC_LOG("%s: %d: kit_free(%p)", file, line, ptr);
         kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
         SXEA6(!(((long)ptr) & 7), "ungranular free(%p)", ptr);
     }
+#if SXE_DEBUG
+    else if (kit_alloc_diagnostics > 1)
+        SXEL6("%s: %d: kit_free((nil))", file, line);
+#endif
 
     je_free(ptr);
 }
