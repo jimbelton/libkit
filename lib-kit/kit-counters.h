@@ -1,7 +1,7 @@
 #ifndef KIT_COUNTERS_H
 #define KIT_COUNTERS_H
 
-#define MAXCOUNTERS             400
+#define MAXCOUNTERS             600
 #define COUNTER_FLAG_NONE      0x00
 #define COUNTER_FLAG_SUMMARIZE 0x01
 
