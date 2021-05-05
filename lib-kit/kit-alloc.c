@@ -1,4 +1,4 @@
-#include "kit-alloc.h"
+#include "kit-alloc-private.h"
 
 #include <fcntl.h>
 #include <mockfail.h>
@@ -54,10 +54,16 @@ int kit_alloc_diagnostics;
 #define KIT_ALLOC_LOG(...) do { } while (0)
 #endif
 
-struct kit_memory_counters kit_memory_counters;                    // Global counters
-size_t                     kit_memory_allocated_max    = 0;        // Tracks the high watermark ever allocated with jemalloc
-static bool                kit_memory_assert_on_enomem = false;    // By default, return NULL on failure to allocate memory
-static bool                kit_memory_is_initialized   = false;    // Set when kit-memory has been initialized
+// The level to which kit-memory has been initialized
+enum kit_memory_init_level {
+    KIT_MEMORY_INIT_NONE,    // Uninitialized
+    KIT_MEMORY_INIT_SOFT,    // Internally initialized by kit_counters with minimal defaults; primarily for memory leak checks
+    KIT_MEMORY_INIT_HARD     // Initialized by the user of libkit; this can only be done once
+} kit_memory_init_level = KIT_MEMORY_INIT_NONE;
+
+struct kit_memory_counters kit_memory_counters;                     // Global counters
+size_t                     kit_memory_allocated_max     = 0;        // Tracks the high watermark ever allocated with jemalloc
+static bool                kit_memory_assert_on_enomem  = false;    // By default, return NULL on failure to allocate memory
 
 #ifdef __linux__
 static int proc_statm_fd = -1;    // Open file descriptor on /proc/<pid>/statm; must be opened before calling chroot
@@ -70,27 +76,25 @@ counter_bytes_combine_handler(int threadnum)
 }
 
 /**
- * Initialize the kit memory management interface; this should done once, normally on an application wide basis
+ * Initialize the memory interface
  *
- * @param assert_on_enomem true to enable assertions on memory allocation failure, false (default) to make sure no one changes
+ * @param hard True if this is an external call to initialize kit-memory
+ *
+ * @note This function should only be called internally (by kit-memory and kit-counters).
  */
 void
-kit_memory_initialize(bool assert_on_enomem)
+kit_memory_init_internal(bool hard)
 {
-    SXEA1(!kit_memory_is_initialized, "Kit memory has already been initialized");
-    kit_memory_assert_on_enomem = assert_on_enomem;
-    kit_memory_is_initialized   = true;
-}
+    enum kit_memory_init_level old_level = kit_memory_init_level;
 
-/**
- * Initialize memory interface counters
- *
- * @note this is independent of module initialization and is needed for memory leak checking in unit tests
- */
-void
-kit_memory_counters_init(void)
-{
-    SXEA1(!kit_counter_isvalid(kit_memory_counters.calloc), "Kit memory counters are already initialized");
+    SXEA1(kit_memory_init_level != KIT_MEMORY_INIT_HARD, "Kit memory is already initialized");
+
+    // Set this immediately to prevent infinite recursion via kit_counters_add
+    kit_memory_init_level = hard ? KIT_MEMORY_INIT_HARD : KIT_MEMORY_INIT_SOFT;
+
+    if (old_level != KIT_MEMORY_INIT_NONE)    // If kit-memory was already initialized, return
+        return;
+
     kit_memory_counters.bytes   = kit_counter_new_with_combine_handler("memory.bytes", counter_bytes_combine_handler);
     kit_memory_counters.calloc  = kit_counter_new("memory.calloc");
     kit_memory_counters.fail    = kit_counter_new("memory.fail");
@@ -115,10 +119,22 @@ kit_memory_counters_init(void)
 #endif
 }
 
-bool
-kit_memory_counters_initialized(void)
+/**
+ * Initialize the kit memory management interface; this should done once, normally on an application wide basis
+ *
+ * @param assert_on_enomem true to enable assertions on memory allocation failure, false (default) to make sure no one changes
+ */
+void
+kit_memory_initialize(bool assert_on_enomem)
 {
-    return kit_counter_isvalid(kit_memory_counters.calloc);
+    kit_memory_assert_on_enomem = assert_on_enomem;
+    kit_memory_init_internal(true);
+}
+
+bool
+kit_memory_is_initialized(void)
+{
+    return kit_memory_init_level != KIT_MEMORY_INIT_NONE;
 }
 
 __attribute__((malloc)) void *

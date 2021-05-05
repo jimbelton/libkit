@@ -4,7 +4,10 @@
 #include <pthread.h>
 
 #include "kit.h"
+#include "kit-alloc.h"
 #include "kit-counters.h"
+
+#define ERROR ((void *)1)
 
 struct mycounters {
     kit_counter_t c1;
@@ -14,6 +17,7 @@ struct mycounters {
 };
 
 unsigned long long my_handler_value;
+
 static unsigned long long
 my_combine_handler(int threadnum)
 {
@@ -128,6 +132,9 @@ counter_callback(void *v, const char *key, const char *val)
             return;
         }
 
+    if (strncmp(key, "memory.", sizeof("memory.") - 1) == 0)
+        return;
+
     SXEL3("Unexpected counter_callback key '%s'", key);
     cg->wtf++;
 }
@@ -137,7 +144,14 @@ static_thread(void *v)
 {
     struct mycounters *my = v;
 
+    if (kit_counters_usable())
+        return ERROR;
+
     kit_counters_init_thread(1);
+
+    if (!kit_counters_usable())
+        return ERROR;
+
     kit_counter_add(my->c2, 5);
     kit_counter_add(my->c3, 3);
     kit_counters_fini_thread(1);
@@ -151,7 +165,14 @@ dynamic_thread(void *v)
     struct mycounters *my = v;
     unsigned slot;
 
+    if (kit_counters_usable())
+        return ERROR;
+
     slot = kit_counters_init_dynamic_thread();
+
+    if (!kit_counters_usable())
+        return ERROR;
+
     kit_counter_incr(my->c2);
     kit_counter_add(my->c3, 10);
     kit_counters_fini_dynamic_thread(slot);
@@ -159,27 +180,58 @@ dynamic_thread(void *v)
     return NULL;
 }
 
+static bool first = true;
+
+static void *
+unmanaged_thread(void *v)
+{
+    struct mycounters *my = v;
+
+    if (kit_counters_usable())    // Expect unmanaged threads to return unusable
+        return ERROR;
+
+    // Perform the atomic versions of all operations
+    if (first) {
+        kit_counter_add(my->c3, 10);
+        kit_counter_incr(my->c3);
+        kit_counter_decr(my->c3);
+        first = false;
+    }
+    else
+        kit_counter_zero(my->c3);
+
+    // Make sure diddling the shared invalid counter is done non-atomically (tested by coverage)
+    kit_counter_incr(INVALID_COUNTER);
+    kit_counter_decr(INVALID_COUNTER);
+    kit_counter_add( INVALID_COUNTER, 0);
+    return NULL;
+}
+
 int
-main(int argc, char **argv)
+main(void)
 {
     struct counter_gather cg;
     struct mycounters my;
     pthread_t thr;
+    void *thread_retval;
     unsigned i;
 
-    SXE_UNUSED_PARAMETER(argc);
-    SXE_UNUSED_PARAMETER(argv);
+    plan_tests(157);
 
-    plan_tests(140);
-
+    /* Initialize counters before memory. test-kit-alloc tests the opposite order
+     */
+    kit_counters_initialize(MAXCOUNTERS, 2, true);    // Allow shared counters to be used
     my.c3 = kit_counter_new("hi.there");
-    ok(kit_counter_isvalid(my.c3), "Created a hi.there counter - before kit_counters_initialize()!");
+    ok(kit_counter_isvalid(my.c3), "Created a hi.there counter");
     kit_counter_incr(my.c3);
-    is(kit_counter_get(my.c3), 1, "Set hi.there => 1 (still before initialize)");
+    is(kit_counter_get(my.c3), 1, "Set hi.there => 1");
+    ok(kit_counter_get_data(INVALID_COUNTER, -1), "Expect some incrementing of the invalid counter due to early memory calls");
+    kit_counter_zero(INVALID_COUNTER);
 
-    kit_counters_initialize(2);
+    kit_memory_initialize(false);    // Call after soft initialization
 
-    is(kit_counter_get(my.c3), 0, "Initialization set hi.there => 0");
+    kit_counter_zero(my.c3);
+    is(kit_counter_get(my.c3), 0, "Set hi.there => 0");
 
     my.c1 = kit_counter_new_with_combine_handler("hello.world", my_combine_handler);
     ok(kit_counter_isvalid(my.c1), "Created a hello.world counter");
@@ -238,18 +290,24 @@ main(int argc, char **argv)
     is(kit_counter_get(my.c1), 12345, "Decrementing hello.world doesn't do anything");
     kit_counter_decr(my.c2);
     is(kit_counter_get(my.c2), 0, "Decrementing hello.city does");
+    thread_retval = ERROR;
 
     if (ok(pthread_create(&thr, NULL, static_thread, &my) == 0, "Created a static thread with counters"))
-        pthread_join(thr, NULL);
+        pthread_join(thr, &thread_retval);
 
+    is(thread_retval, NULL, "kit_counters_usable worked as expected in static thread");
     kit_counters_mib_text("", &cg, counter_callback, -1, 0);
     is(cg.hello_city, 5, "gather: hello.city says 5");
     is(cg.hi_there, 4, "gather: hi.there says 4");
 
     diag("Setting up for dynamic threads and creating one to bump counters by 0, 1 and 10");
     kit_counters_prepare_dynamic_threads(1);
+    thread_retval = ERROR;
+
     if (ok(pthread_create(&thr, NULL, dynamic_thread, &my) == 0, "Created a dynamic thread with counters"))
-        pthread_join(thr, NULL);
+        pthread_join(thr, &thread_retval);
+
+    is(thread_retval, NULL, "kit_counters_usable worked as expected in dynamic thread");
 
     /* We can always change our mind about how many dynamic slots we have! */
     kit_counters_prepare_dynamic_threads(3);
@@ -327,5 +385,40 @@ main(int argc, char **argv)
         }
     }
 
+    diag("Test unmanaged threads that use shared counters");
+    {
+        unsigned long long was = kit_counter_get(my.c3);
+
+        if (ok(pthread_create(&thr, NULL, unmanaged_thread, &my) == 0, "Created an unmanaged thread with no counters"))
+            pthread_join(thr, &thread_retval);
+
+        is(thread_retval, NULL, "kit_counters_usable worked as expected in unmanaged thread");
+        is(kit_counter_get(my.c3), was + 10, "After spawning thread that uses a shared counter, counter increased by 10");
+        is(kit_counter_get_data(my.c3, KIT_THREAD_SHARED), 10, "Shared counter was 10");
+
+        if (ok(pthread_create(&thr, NULL, unmanaged_thread, &my) == 0, "Created an unmanaged thread to zero shared counters"))
+            pthread_join(thr, &thread_retval);
+
+        is(kit_counter_get(my.c3), was, "After spawning thread that zeros the shared counter, counter is what it was");
+        is(kit_counter_get_data(my.c3, KIT_THREAD_SHARED), 0, "Shared counter was 0");
+    }
+
+    diag("Test out of range counters");
+    {
+        unsigned non_existent_counter = kit_num_counters() + 1;
+
+        is(kit_counter_get(non_existent_counter), 0, "Nonexistent counter starts at 0");
+        kit_counter_incr(non_existent_counter);
+        is(kit_counter_get(non_existent_counter), 0, "Nonexistent counter can't be incremented");
+        kit_counter_decr(non_existent_counter);
+        is(kit_counter_get(non_existent_counter), 0, "Nonexistent counter can't be decremented");
+        kit_counter_zero(non_existent_counter);
+        kit_counter_add(non_existent_counter, 2);
+        is(kit_counter_get(non_existent_counter), 0, "Nonexistent counter can't be added to");
+    }
+
+    ok(kit_counters_usable(),                         "Counters are usable in the main thread");
+    is(kit_num_counters(),                        10, "Number of counters is as expected (4 + 6 memory counters)");
+    is(kit_counter_get_data(INVALID_COUNTER, -1), 0,  "The invalid counter has not been touched");
     return exit_status();
 }

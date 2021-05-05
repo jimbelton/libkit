@@ -15,16 +15,6 @@ check_counters(const char *why, int m, int c, int r, int f, int fail)
     is(kit_counter_get(KIT_COUNTER_MEMORY_FAIL), fail, "%s, the KIT_COUNTER_MEMORY_FAIL value is %d", why, fail);
 }
 
-static void
-clear_counters(void)
-{
-    kit_counter_zero(KIT_COUNTER_MEMORY_MALLOC);
-    kit_counter_zero(KIT_COUNTER_MEMORY_CALLOC);
-    kit_counter_zero(KIT_COUNTER_MEMORY_REALLOC);
-    kit_counter_zero(KIT_COUNTER_MEMORY_FREE);
-    kit_counter_zero(KIT_COUNTER_MEMORY_FAIL);
-}
-
 struct counter_gather {
     unsigned long bytes;
     unsigned long malloc;
@@ -95,18 +85,18 @@ main(void)
     char *ptr1, *ptr2;
     int failures;
 
-    plan_tests(75);
+    plan_tests(77);
 
-    kit_memory_counters_init();
-    ok(kit_memory_counters_initialized(), "Memory counters are initialized");
+    /* Initialize memory before counters. test-kit-counters tests the opposite order
+     */
+    kit_memory_initialize(false);    // Initialize memory with no aborts; this will call kit_memory_init_internal
+    ok(kit_memory_is_initialized(),               "Memory is initialized");
+    ok(kit_counter_get(KIT_COUNTER_MEMORY_BYTES), "Memory was allocated and tracked before counters were initialized");
 
-    kit_memory_initialize(false);    // Initialize with no aborts; this will call kit_memory_counters_init again, which is safe
-    kit_counters_initialize(1);
-    clear_counters();
-
-    alloc1 = kit_allocated_bytes();
+    kit_counters_initialize(MAXCOUNTERS, 1, false);
+    check_counters("After initializing the counters", 0, 0, 0, 0, 0);
+    alloc1  = kit_allocated_bytes();
     talloc1 = kit_thread_allocated_bytes();
-    check_counters("At startup", 0, 0, 0, 0, 0);
 
     ptr1 = kit_malloc(100);
     check_counters("After one malloc", 1, 0, 0, 0, 0);
@@ -177,5 +167,8 @@ main(void)
     is_strncmp(buffer, "___ Begin jemalloc statistics ___", sizeof("___ Begin jemalloc statistics ___") - 1,
                "Expected start of output found");
     free(mem);
+
+    is(kit_counter_get_data(INVALID_COUNTER, -1), 0,  "The invalid counter has not been touched");
+
     return exit_status();
 }
