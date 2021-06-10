@@ -304,7 +304,7 @@ kit_counters_fini_thread(unsigned slot)
     SXEA1(thread_counters == all_counters[slot], "thread finalized at wrong slot %u", slot);
     kit_counters_combine(&dead_thread_counters, slot);
     memset(thread_counters, '\0', sizeof(*thread_counters));
-    thread_counters      = NULL;
+    thread_counters = &dead_thread_counters;    /* So that thread destructors can call kit_free() - see pthread_key_create() */
     counter_state[slot] &= ~COUNTER_USED;
 }
 
@@ -482,7 +482,7 @@ kit_counters_fini_dynamic_thread(unsigned slot)
     SXEA1(slot < maxthreads, "thread finalized as slot %u, but slot_count is %u", slot, maxthreads);
     SXEA1(counter_state[slot] == (COUNTER_USED|COUNTER_DYNAMIC), "thread finalized as slot %u, but that slot is not dynamic and in use", slot);
     kit_counters_combine(&dead_thread_counters, slot);
-    thread_counters     = NULL;
+    thread_counters = &dead_thread_counters;    /* So that thread destructors can call kit_free() - see pthread_key_create() */
     counter_state[slot] = 0;
 }
 
