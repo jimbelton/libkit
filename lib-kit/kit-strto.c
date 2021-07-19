@@ -22,7 +22,7 @@
  * values of zero were really for a value of zero, setting errno if not.
  */
 static void
-check_zero_result(const char *restrict str, char **restrict endptr, int base)
+check_zero_result(const char *str, char **endptr, int base)
 {
     int pos = 0;
 
@@ -54,7 +54,7 @@ check_zero_result(const char *restrict str, char **restrict endptr, int base)
  * @note Sets errno to 0 on success or an error code on failure
  */
 unsigned long
-kit_strtoul(const char *restrict str, char **restrict endptr, int base)
+kit_strtoul(const char *str, char **endptr, int base)
 {
     unsigned long ret;
 
@@ -72,7 +72,7 @@ kit_strtoul(const char *restrict str, char **restrict endptr, int base)
  * @note Sets errno to 0 on success or an error code on failure
  */
 unsigned long long
-kit_strtoull(const char *restrict str, char **restrict endptr, int base)
+kit_strtoull(const char *str, char **endptr, int base)
 {
     unsigned long long ret;
 
@@ -90,7 +90,7 @@ kit_strtoull(const char *restrict str, char **restrict endptr, int base)
  * @note Sets errno to 0 on success or an error code on failure
  */
 long int
-kit_strtol(const char *restrict str, char **restrict endptr, int base)
+kit_strtol(const char *str, char **endptr, int base)
 {
     long ret;
 
@@ -108,7 +108,7 @@ kit_strtol(const char *restrict str, char **restrict endptr, int base)
  * @note Sets errno to 0 on success or an error code on failure
  */
 long long int
-kit_strtoll(const char *restrict str, char **restrict endptr, int base)
+kit_strtoll(const char *str, char **endptr, int base)
 {
     long long ret;
 
@@ -126,7 +126,7 @@ kit_strtoll(const char *restrict str, char **restrict endptr, int base)
  * @note Sets errno to 0 on success or an error code on failure
  */
 double
-kit_strtod(const char *restrict str, char **restrict endptr)
+kit_strtod(const char *str, char **endptr)
 {
     double ret;
 
