@@ -26,12 +26,13 @@ static const unsigned u[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 1
 int
 main(void)
 {
-    plan_no_plan();
-
     unsigned *array = NULL;
     unsigned  count = 0;
     unsigned  alloc = 7;
     unsigned  value = 2;
+    bool      match;
+
+    plan_tests(40);
 
     MOCKFAIL_START_TESTS(1, kit_sortedarray_add);
     ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to add 2 (realloc failed)");
@@ -73,13 +74,16 @@ main(void)
     is(array[2], 5,  "Element 3 is 7");
     is(array[6], 23, "Element 6 is 23");
 
-    is(kit_sortedarray_find(&testclass, array, count, &u[1]),  0, "Correct insertion point for 1");
-    is(kit_sortedarray_find(&testclass, array, count, &u[2]),  0, "Found 2");
-    is(kit_sortedarray_find(&testclass, array, count, &u[6]),  3, "Correct insertion point for 6");
-    is(kit_sortedarray_find(&testclass, array, count, &u[7]),  3, "Found 7");
-    is(kit_sortedarray_find(&testclass, array, count, &u[20]), 6, "Correct insertion point for 20");
-    is(kit_sortedarray_find(&testclass, array, count, &u[23]), 6, "Found 23");
-    is(kit_sortedarray_find(&testclass, array, count, &u[24]), 7, "Correct insertion point for 24");
+    is(kit_sortedarray_find(&testclass, array, count, &u[1],  &match), 0, "Correct insertion point for 1");
+    ok(!match,                                                            "1 is not an exact match");
+    is(kit_sortedarray_find(&testclass, array, count, &u[2],  &match), 0, "Found 2");
+    ok(match,                                                             "2 is an exact match");
+    is(kit_sortedarray_find(&testclass, array, count, &u[6],  &match), 3, "Correct insertion point for 6");
+    is(kit_sortedarray_find(&testclass, array, count, &u[7],  &match), 3, "Found 7");
+    is(kit_sortedarray_find(&testclass, array, count, &u[20], &match), 6, "Correct insertion point for 20");
+    is(kit_sortedarray_find(&testclass, array, count, &u[23], &match), 6, "Found 23");
+    is(kit_sortedarray_find(&testclass, array, count, &u[24], &match), 7, "Correct insertion point for 24");
+    ok(!match,                                                            "24 is not an exact match");
 
     ok(!kit_sortedarray_get(&testclass, array, count, &u[1]),  "Couldn't get 1");
     ok(!kit_sortedarray_get(&testclass, array, count, &u[6]),  "Couldn't get 6");

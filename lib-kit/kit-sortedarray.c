@@ -9,13 +9,13 @@
 /**
  * Add an element to a sorted array
  *
- * @param type       Object definining the type of elements of the array
- * @param array      Pointer to the address of the array in malloced storage; *array == NULL to allocate first time
- * @param count      Pointer to the count of array elements
- * @param alloc      Pointer to the number of array slots allocated; used as the initial allocation if *array == NULL
- * @param element    Address of the element to insert
- * @param flags      KIT_SORTEDARRAY_DEFAULT or a combination of KIT_SORTEDARRAY_ALLOW_INSERTS | KIT_SORTEDARRAY_ALLOW_GROWTH
- *                                                             | KIT_SORTEDARRAY_ZERO_COPY
+ * @param type    Object definining the type of elements of the array
+ * @param array   Pointer to the address of the array in malloced storage; *array == NULL to allocate first time
+ * @param count   Pointer to the count of array elements
+ * @param alloc   Pointer to the number of array slots allocated; used as the initial allocation if *array == NULL
+ * @param element Address of the element to insert
+ * @param flags   KIT_SORTEDARRAY_DEFAULT or a combination of KIT_SORTEDARRAY_ALLOW_INSERTS | KIT_SORTEDARRAY_ALLOW_GROWTH
+ *                                                            | KIT_SORTEDARRAY_ZERO_COPY
  *
  * @return Pointer to inserted element (uninitialized if KIT_SORTEDARRAY_ZERO_COPY passed), or NULL on a duplicate or error
  */
@@ -26,9 +26,10 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
     unsigned    pos;
     uint8_t    *slot;
     const void *key;
+    void       *new_array;
     int         cmp;
     unsigned    more = 0;
-    void       *new_array;
+    bool        match;
 
     SXEA6(*array || *count == 0, "Array is unallocated but count is non zero");
 
@@ -42,10 +43,10 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
         if (cmp > 0) {    // Out of order
             // This (actually the memmove() below) is expensive when building large pref blocks
             if (flags & KIT_SORTEDARRAY_ALLOW_INSERTS) {
-                pos  = kit_sortedarray_find(type, *array, *count, key);
+                pos  = kit_sortedarray_find(type, *array, *count, key, &match);
                 slot = (uint8_t *)*array + pos * type->size;
 
-                if (pos < *count && type->cmp(slot + type->keyoffset, key) == 0)    // Already exists
+                if (match)    // Already exists
                     return NULL;
             } else {
                 SXEL2("Unsorted list insertions are not permitted");
@@ -87,17 +88,33 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
     return slot;
 }
 
+/**
+ * Search a sorted array for a key, returning the closest match
+ *
+ * @param type      Defines the type of the elements
+ * @param array     The array to search
+ * @param count     Number of elements in the array
+ * @param key       The key to search for
+ * @param match_out Pointer to a bool set to true if there was an exact match and to false otherwise
+ *
+ * @return Index of the element found on exact match, the index of the first element whose key is greater, or count if there is
+ *         no greater element.
+ */
 unsigned
-kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *array, unsigned count, const void *key)
+kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *array, unsigned count, const void *key,
+                     bool *match_out)
 {
     unsigned i, lim, pos;
     int cmp;
+
+    *match_out = false;
 
     for (pos = 0, lim = count; lim; lim >>= 1) {
         i   = pos + (lim >> 1);
         cmp = type->cmp(key, (const uint8_t *)array + type->size * i + type->keyoffset);
 
         if (cmp == 0) {
+            *match_out = true;
             pos = i;
             break;
         }
@@ -121,13 +138,12 @@ kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *arr
 }
 
 const void *
-kit_sortedarray_get(const struct kit_sortedelement_class *type, const void *array, unsigned count, const void *key)
+kit_sortedarray_get(const struct kit_sortedelement_class *class, const void *array, unsigned count, const void *key)
 {
+    bool match;
+
     SXEA6(array || count == 0, "kit_sortedarray_get called with a NULL array and count %u", count);
-    unsigned pos = array ? kit_sortedarray_find(type, array, count, key) : count;
+    unsigned pos = array ? kit_sortedarray_find(class, array, count, key, &match) : count;
 
-    if (pos < count && type->cmp(key, (const uint8_t *)array + type->size * pos + type->keyoffset) == 0)
-        return (const uint8_t *)array + type->size * pos;
-
-    return NULL;
+    return match ? (const uint8_t *)array + class->size * pos : NULL;
 }
