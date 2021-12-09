@@ -239,7 +239,7 @@ main(void)
     ok(kit_counter_isvalid(my.c2), "Created a hello.city counter");
     ok(kit_counter_isvalid(my.c3), "The hi.there counter is still valid and available");
     my.c4 = kit_counter_new_with_mibfn("this.path", mibfn_thispath);
-    ok(kit_counter_isvalid(my.c3), "Created a this.path mibfn counter");
+    ok(kit_counter_isvalid(my.c4), "Created a this.path mibfn counter");
 
     kit_counter_add(my.c4, 999);
     is(kit_counter_get(my.c4), 999, "Set this.path's counter to 999");
