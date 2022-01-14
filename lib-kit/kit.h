@@ -85,4 +85,10 @@ extern const struct kit_deviceid kit_deviceid_nil;    // The nil DEVICEID (All b
 #include "kit-strto-proto.h"
 #include "kit-udp-proto.h"
 
+static inline uint32_t
+kit_time_ms(void)
+{
+    return kit_time_nsec() / 1000000ULL;
+}
+
 #endif
