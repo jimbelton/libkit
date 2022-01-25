@@ -30,20 +30,20 @@ kit_udp_socket(int domain, unsigned flags)
 
     if ((fd = socket(domain, SOCK_DGRAM, 0)) >= 0) {
         if (flags & KIT_UDP_DELAY)
-            SXEA1(setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP, &enabled, sizeof(enabled)) >= 0, "Failed to enable UDP timestamps");
+            SXEA1(setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP, &enabled, sizeof(enabled)) >= 0, "Failed to enable UDP timestamps: %s", strerror(errno));
 
         if (flags & KIT_UDP_TTLTOS) {
-            SXEA1(setsockopt(fd, IPPROTO_IP, IP_RECVTTL, &enabled, sizeof(enabled)) >= 0, "Failed to enable IP TTLs");
-            SXEA1(setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &enabled, sizeof(enabled)) >= 0, "Failed to enable IP TOSs");
+            SXEA1(setsockopt(fd, IPPROTO_IP, IP_RECVTTL, &enabled, sizeof(enabled)) >= 0, "Failed to enable IP TTLs: %s", strerror(errno));
+            SXEA1(setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &enabled, sizeof(enabled)) >= 0, "Failed to enable IP TOSs: %s", strerror(errno));
         }
 
         if (flags & KIT_UDP_DST_ADDR) {
-            SXEA1(setsockopt(fd, IPPROTO_IP, IP_ORIGDSTADDR, &enabled, sizeof(enabled)) >= 0, "Failed to enable original dst addr");
+            SXEA1(setsockopt(fd, IPPROTO_IP, IP_ORIGDSTADDR, &enabled, sizeof(enabled)) >= 0, "Failed to enable original dst addr: %s", strerror(errno));
         }
 
         if (flags & KIT_UDP_TRANSPARENT) {
 #ifdef IP_TRANSPARENT
-            SXEA1(setsockopt(fd, IPPROTO_IP, IP_TRANSPARENT, &enabled, sizeof(enabled)) >= 0, "Failed to enable transparent proxying"); /* COVERAGE EXCLUSION: Must be priveleged to set IP_TRANSPARENT */
+            SXEA1(setsockopt(fd, IPPROTO_IP, IP_TRANSPARENT, &enabled, sizeof(enabled)) >= 0, "Failed to enable transparent proxying: %s", strerror(errno)); /* COVERAGE EXCLUSION: Must be priveleged to set IP_TRANSPARENT */
 #else
             SXEA1(0, "IP_TRANSPARENT does not exist on this platform");                                                                 /* COVERAGE EXCLUSION: impossible to test in our current test infastructure */
 #endif
