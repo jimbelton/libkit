@@ -153,6 +153,10 @@ main(void)
     check_counters("After a realloc(..., 0)", 2, 1, 1, 3, 0);
 
     ptr1 = kit_realloc_diag(NULL, 0, __FILE__, __LINE__);    // Call via the wrapper (used in release build by openssl)
+
+    if (!ptr1)    // Behaviour when calling realloc with NULL, 0 is undefined. If NULL returned, realloc with 1 byte.
+        ptr1 = kit_realloc_diag(NULL, 1, __FILE__, __LINE__);
+
     check_counters("After a realloc(NULL, 0)", 3, 1, 1, 3, 0);
 
     kit_free(NULL);

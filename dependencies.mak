@@ -16,3 +16,7 @@ include $(TOP.dir)/mak/mak-common.mak
 ifneq ($(MAK_VERSION),1)    # Versions of mak > 1 use an external tap libary
 	LINK_FLAGS += -ltap
 endif
+
+IFLAGS      += -I$(SXE.dir)/$(DST.dir)/include
+CFLAGS      += -D_GNU_SOURCE=1 -D_FORTIFY_SOURCE=2 -pthread
+LINK_FLAGS  += $(SXE.dir)/$(DST.dir)/libsxe$(EXT.lib) -ljemalloc -lrt -rdynamic -pthread -ldl -pie -z noexecstack

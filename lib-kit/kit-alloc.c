@@ -21,18 +21,18 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "kit-alloc-private.h"
-
 #include <fcntl.h>
+#include <jemalloc/jemalloc.h>
 #include <mockfail.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sxe-util.h>
-#include <jemalloc.h>
 
 #ifdef __linux__
 #include <malloc.h>
 #endif
+
+#include "kit-alloc-private.h"
 
 #ifdef __GLIBC__
 #pragma GCC diagnostic ignored "-Waggregate-return"    // To allow use of glibc mallinfo
@@ -163,7 +163,7 @@ kit_memory_is_initialized(void)
 __attribute__((malloc)) void *
 KIT_ALLOC_MANGLE(kit_malloc)(size_t size KIT_ALLOC_SOURCE_PROTO)
 {
-    void *result = je_malloc(size);
+    void *result = mallocx(size, 0);
 
     SXEA1(!kit_memory_assert_on_enomem || result, "%s: failed to allocate %zu bytes of memory", __FUNCTION__, size);
     kit_counter_incr(KIT_COUNTER_MEMORY_MALLOC);
@@ -178,7 +178,13 @@ KIT_ALLOC_MANGLE(kit_malloc)(size_t size KIT_ALLOC_SOURCE_PROTO)
 __attribute__((malloc)) void *
 KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO)
 {
-    void *result = je_calloc(num, size);
+    size_t total_size = num * size;
+    void  *result     = NULL;
+
+    if (total_size < num || total_size < size)
+        SXEA1(!kit_memory_assert_on_enomem || result, ": %zu*%zu exceeds the maximum size %zu", num, size, (size_t)~0UL);
+    else
+        result = mallocx(total_size, MALLOCX_ZERO);
 
     SXEA1(!kit_memory_assert_on_enomem || result, "%s: failed to allocate %zu %zu byte objects", __FUNCTION__, num, size);
     kit_counter_incr(KIT_COUNTER_MEMORY_CALLOC);
@@ -196,14 +202,13 @@ KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO)
     if (ptr) {
         KIT_ALLOC_LOG("%s: %d: kit_free(%p)", file, line, ptr);
         kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
-        SXEA6(!(((long)ptr) & 7), "ungranular free(%p)", ptr);
+        SXEA6(!(((long)ptr) & (sizeof(int) - 1)), "ungranular free(%p)", ptr);
+        dallocx(ptr, 0);
     }
 #if SXE_DEBUG
     else if (kit_alloc_diagnostics > 1)
         SXEL6("%s: %d: kit_free((nil))", file, line);
 #endif
-
-    je_free(ptr);
 }
 
 /*-
@@ -212,7 +217,14 @@ KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO)
 void *
 KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 {
-    void *result = je_realloc(ptr, size);
+    void *result = NULL;
+
+    if (!ptr)
+        result = mallocx(size, 0);
+    else if (size)
+        result = rallocx(ptr, size, 0);
+    else
+        dallocx(ptr, 0);
 
     if (result == NULL && (size || ptr == NULL)) {
         SXEA1(!kit_memory_assert_on_enomem, "%s: failed to reallocate object to %zu bytes", __FUNCTION__, size);
@@ -221,7 +233,7 @@ KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 
     if (ptr == NULL && result != NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_MALLOC);
-    else if (size == 0 && result == NULL)
+    else if (ptr && size == 0 && result == NULL)
         kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
     else
         kit_counter_incr(KIT_COUNTER_MEMORY_REALLOC);
@@ -233,7 +245,7 @@ KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 void *
 KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
 {
-    void *result;
+    void *result = NULL;
 
     /*-
      * We're aiming for two things here:
@@ -241,13 +253,15 @@ KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO)
      * - If realloc() fails, return the original
      */
     if (ptr) {
-        if ((result = MOCKFAIL(KIT_ALLOC_MANGLE(kit_reduce), NULL, je_realloc(ptr, size))) == NULL) {
-            if (size == 0)
-                kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
-            else {
+        if (size) {
+            if ((result = MOCKFAIL(KIT_ALLOC_MANGLE(kit_reduce), NULL, rallocx(ptr, size, 0))) == NULL) {
                 kit_counter_incr(KIT_COUNTER_MEMORY_FAIL);
                 result = ptr;
             }
+        }
+        else {
+            dallocx(ptr, 0);
+            kit_counter_incr(KIT_COUNTER_MEMORY_FREE);
         }
 
         if (result != ptr)
@@ -264,7 +278,7 @@ __attribute__((malloc)) char *
 KIT_ALLOC_MANGLE(kit_strdup)(const char *txt KIT_ALLOC_SOURCE_PROTO)
 {
     size_t len    = strlen(txt);
-    void  *result = je_malloc(len + 1);
+    void  *result = mallocx(len + 1, 0);
 
     if (result == NULL) {
         SXEA1(!kit_memory_assert_on_enomem, "%s: failed to allocate %zu bytes of memory", __FUNCTION__, len + 1);
@@ -288,16 +302,16 @@ KIT_ALLOC_MANGLE(kit_strdup)(const char *txt KIT_ALLOC_SOURCE_PROTO)
  * detect memory underflows and some overflows.
  *
  * It's worth noting that this triggers an assert():
- *     char *ptr = je_malloc(8);
+ *     char *ptr = mallocx(8, 0);
  *     ptr[8] = 'x';
- *     je_free(ptr);
+ *     dallocx(ptr, 0);
  *
  * But this doesn't, due to the rounding that jemalloc does:
- *     char *ptr = je_malloc(3);
+ *     char *ptr = mallocx(3, 0);
  *     ptr[3] = 'x';
- *     je_free(ptr);
+ *     dallocx(ptr, 0);
  */
-const char *je_malloc_conf = "junk:true,redzone:true";
+const char *malloc_conf = "junk:true,redzone:true";
 
 #else // For the non-debug build, the following diag wrappers are needed for openssl hooks
 
@@ -341,18 +355,18 @@ kit_allocated_bytes(void)
     if (!kit_mib_init) {
         // To optimize collection of je_malloc statistics, get binary MIB ids
         //
-        SXEA1(!je_mallctlnametomib("epoch", kit_epoch_mib, &kit_epoch_mib_len)
-           && !je_mallctlnametomib("stats.allocated", kit_allocated_mib, &kit_allocated_mib_len),
-              "Failed to generated binary mib id for je_malloc's epoch or stats.allocated");
+        SXEA1(!mallctlnametomib("epoch", kit_epoch_mib, &kit_epoch_mib_len)
+           && !mallctlnametomib("stats.allocated", kit_allocated_mib, &kit_allocated_mib_len),
+              "Failed to generated binary mib id for jemalloc's epoch or stats.allocated");
         kit_mib_init = true;
     }
 
     epoch = 1;
     len = sizeof(epoch);
-    je_mallctlbymib(kit_epoch_mib, kit_epoch_mib_len, &epoch, &len, &epoch, len);
+    mallctlbymib(kit_epoch_mib, kit_epoch_mib_len, &epoch, &len, &epoch, len);
 
     len = sizeof(alloc);
-    je_mallctlbymib(kit_allocated_mib, kit_allocated_mib_len, &alloc, &len, NULL, 0);
+    mallctlbymib(kit_allocated_mib, kit_allocated_mib_len, &alloc, &len, NULL, 0);
 
     if (alloc > kit_memory_allocated_max)
         kit_memory_allocated_max = alloc;
@@ -368,13 +382,13 @@ kit_thread_allocated_bytes(void)
 
     len = sizeof(allocatedp);
     if (!allocatedp) {
-        je_mallctl("thread.allocatedp", &allocatedp, &len, NULL, 0);
+        mallctl("thread.allocatedp", &allocatedp, &len, NULL, 0);
         SXEA1(allocatedp, "Couldn't obtain thread.allocatedp, is jemalloc built with --enable-stats?");
     }
 
     len = sizeof(deallocatedp);
     if (!deallocatedp) {
-        je_mallctl("thread.deallocatedp", &deallocatedp, &len, NULL, 0);
+        mallctl("thread.deallocatedp", &deallocatedp, &len, NULL, 0);
         SXEA1(deallocatedp, "Couldn't obtain thread.deallocatedp, is jemalloc built with --enable-stats?");
     }
 
@@ -466,6 +480,6 @@ kit_memory_log_stats(__printflike(1, 2) int (*printer)(const char *format, ...),
 
     visitor.written = 0;
     visitor.printer = printer;
-    je_malloc_stats_print(memory_stats_line, &visitor, options ?: "gblxe");
+    malloc_stats_print(memory_stats_line, &visitor, options ?: "gblxe");
     return visitor.written > 0;
 }
