@@ -30,7 +30,8 @@
 #include "kit-alloc.h"
 
 /**
- * Add an element to a sorted array
+ * Add an element to a sorted array. If KIT_SORTEDARRAY_ZERO flag is set caller SHOULD assign the returned pointer
+ * a value immediately to avoid possible unsorted array.
  *
  * @param type    Object definining the type of elements of the array
  * @param array   Pointer to the address of the array in malloced storage; *array == NULL to allocate first time
@@ -106,6 +107,15 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
 
     if (!(flags & KIT_SORTEDARRAY_ZERO_COPY))
         memcpy(slot, element, type->size);
+#if SXE_DEBUG
+    /**
+     * In the case of KIT_SORTEDARRAY_ZERO_COPY -
+     * corrupt memory intentionally, forcing caller
+     * to populate the returned memory address
+     */
+    else
+        memset(slot, 0xa5, type->size);
+#endif
 
     (*count)++;
     return slot;
@@ -163,10 +173,40 @@ kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *arr
 const void *
 kit_sortedarray_get(const struct kit_sortedelement_class *class, const void *array, unsigned count, const void *key)
 {
-    bool match;
+    bool match = false;
 
     SXEA6(array || count == 0, "kit_sortedarray_get called with a NULL array and count %u", count);
     unsigned pos = array ? kit_sortedarray_find(class, array, count, key, &match) : count;
 
     return match ? (const uint8_t *)array + class->size * pos : NULL;
+}
+
+/**
+ * Delete key element from sorted array, returning true if the key is found and removed and decrementing count.
+ *
+ * @param type      Defines the type of the elements
+ * @param array     The array to search
+ * @param count     Number of elements in the array
+ * @param key       The key to delete
+ *
+ * @return Boolean value equaling true if the key is found and deleted successfully, false otherwise.
+ */
+bool
+kit_sortedarray_delete(const struct kit_sortedelement_class *type, void *array, unsigned *count, const void *key)
+{
+    bool     match;
+    unsigned pos;
+
+    if (!array || *count == 0)
+        return false;
+
+    pos = kit_sortedarray_find(type, array, *count, key, &match);
+
+    if (!match)
+        return false;
+
+    memmove((uint8_t *)array + pos * type->size, (uint8_t *)array + (pos + 1) * type->size, (size_t)(*count - pos - 1) * type->size);
+    (*count)--;
+
+    return true;
 }

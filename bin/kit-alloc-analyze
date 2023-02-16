@@ -60,7 +60,7 @@ for (my $line_number = 1; my $line = <>; $line_number++) {
         }
     }
 
-    if ($line =~ m{- ([^: ]+): (?:\d+): 0x([\da-f]+) = kit_((?:m|c|re)alloc|strdup)\((?:0x([\da-f]+)|\(nil\))?(?:, |\[)?(\d+)}) {
+    if ($line =~ m{- ([^: ]+): (?:\d+): 0x([\da-f]+) = kit_((?:m|c|re)alloc|memalign|strn?dup)\((?:0x([\da-f]+)|\(nil\))?(?:, |\[)?(\d+)}) {
         # This is an alloc, realloc, or strdup, lines look like this:
         # 20210407 222641.037 T     26795 ------ 6     - conf.c: 119: 0x7f8b69c17180 = kit_realloc((nil), 88)
         # 20210407 222641.037 T     26795 ------ 6     - conf.c: 670: 0x7f8b69c17180 = kit_realloc(0x7f8b69c17180, 88)

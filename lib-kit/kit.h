@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #endif
 #include <netinet/in.h>
+#include <resolv.h>
 #include <stdbool.h>
 
 #define KIT_UNSIGNED_MAX (~0U)
@@ -107,6 +108,7 @@ extern const struct kit_deviceid kit_deviceid_nil;    // The nil DEVICEID (All b
 #include "kit-time-proto.h"
 #include "kit-strto-proto.h"
 #include "kit-udp-proto.h"
+#include "kit-resolv-proto.h"
 
 static inline uint32_t
 kit_time_ms(void)
