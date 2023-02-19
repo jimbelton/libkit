@@ -21,6 +21,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#define _GNU_SOURCE       // For memrchr glibc extension
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <string.h>

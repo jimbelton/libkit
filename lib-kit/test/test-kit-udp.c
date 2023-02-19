@@ -65,16 +65,16 @@ main(void)
     struct kit_udp_ttltos ttltos = {255, 0};
 
     plan_tests(66);
-    ok((fd_send = socket(AF_INET, SOCK_DGRAM, 0)) >= 0,           "Created send socket");
-    ok((fd_recv = kit_udp_socket(AF_INET, KIT_UDP_DELAY))  >= 0,  "Created recv socket asking for delay");
+    ok((fd_send = socket(AF_INET, SOCK_DGRAM, 0)) >= 0,          "Created send socket");
+    ok((fd_recv = kit_udp_socket(AF_INET, KIT_UDP_DELAY))  >= 0, "Created recv socket asking for delay");
 
     addr_to.sin_family = AF_INET;
     addr_to.sin_port   = 0;
     addr_len           = sizeof(addr_to);
-    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                 "Created IP address");
-    ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0, "Bound IP address to socket");
-    ok(getsockname(fd_recv, &addr_to, &addr_len) >= 0,            "Got bound sockaddr (to send to)");
-    ok(addr_to.sin_port != 0,                                     "Port was set to %hu", ntohs(addr_to.sin_port));
+    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                         "Created IP address");
+    ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0,         "Bound IP address to socket");
+    ok(getsockname(fd_recv, (struct sockaddr *)&addr_to, &addr_len) >= 0, "Got bound sockaddr (to send to)");
+    ok(addr_to.sin_port != 0,                                             "Port was set to %hu", ntohs(addr_to.sin_port));
 
     diag("Test happy path with timestamp");
     is(sendto(fd_send, TEST_MESSAGE, TEST_MESSAGE_SIZE, 0, (struct sockaddr *)&addr_to, sizeof(addr_to)), TEST_MESSAGE_SIZE,
@@ -115,9 +115,9 @@ main(void)
         addr_to.sin_family = AF_INET;
         addr_to.sin_port = 0;
         addr_len = sizeof(addr_to);
-        ok(inet_aton("127.0.0.1", &addr_to.sin_addr), "Created IP address");
-        ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0, "Bound IP address to socket");
-        ok(getsockname(fd_recv, &addr_to, &addr_len) >= 0, "Got bound sockaddr");
+        ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                         "Created IP address");
+        ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0,         "Bound IP address to socket");
+        ok(getsockname(fd_recv, (struct sockaddr *)&addr_to, &addr_len) >= 0, "Got bound sockaddr");
         ok(addr_to.sin_port != 0, "Port was set to %hu", ntohs(addr_to.sin_port));
         is(sendto(fd_send, TEST_MESSAGE, TEST_MESSAGE_SIZE, 0, (struct sockaddr *)&addr_to, sizeof(addr_to)),
            TEST_MESSAGE_SIZE,
@@ -146,10 +146,10 @@ main(void)
     addr_to.sin_family = AF_INET;
     addr_to.sin_port   = 0;
     addr_len           = sizeof(addr_to);
-    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                 "Created IP address");
-    ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0, "Bound IP address to socket");
-    ok(getsockname(fd_recv, &addr_to, &addr_len) >= 0,            "Got bound sockaddr");
-    ok(addr_to.sin_port != 0,                                     "Port was set to %hu", ntohs(addr_to.sin_port));
+    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                         "Created IP address");
+    ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0,         "Bound IP address to socket");
+    ok(getsockname(fd_recv, (struct sockaddr *)&addr_to, &addr_len) >= 0, "Got bound sockaddr");
+    ok(addr_to.sin_port != 0,                                             "Port was set to %hu", ntohs(addr_to.sin_port));
     is(sendto(fd_send, TEST_MESSAGE, TEST_MESSAGE_SIZE, 0, (struct sockaddr *)&addr_to, sizeof(addr_to)), TEST_MESSAGE_SIZE,
        "Sent %zu bytes (errno=%s)", TEST_MESSAGE_SIZE, strerror(errno));
     is(kit_recvfrom(fd_recv, buffer, sizeof(buffer), MSG_DONTWAIT, ADDR_FROM, &addr_len, NULL, NULL, &delay_in_msec, NULL),
@@ -172,10 +172,10 @@ main(void)
     addr_to.sin_family = AF_INET;
     addr_to.sin_port   = 0;
     addr_len           = sizeof(addr_to);
-    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                 "Created IP address");
-    ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0, "Bound IP address to socket");
-    ok(getsockname(fd_recv, &addr_to, &addr_len) >= 0,            "Got bound sockaddr");
-    ok(addr_to.sin_port != 0,                                     "Port was set to %hu", ntohs(addr_to.sin_port));
+    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                         "Created IP address");
+    ok(bind(fd_recv, (struct sockaddr *)&addr_to, addr_len) >= 0,         "Bound IP address to socket");
+    ok(getsockname(fd_recv, (struct sockaddr *)&addr_to, &addr_len) >= 0, "Got bound sockaddr");
+    ok(addr_to.sin_port != 0,                                             "Port was set to %hu", ntohs(addr_to.sin_port));
     is(sendto(fd_send, TEST_MESSAGE, TEST_MESSAGE_SIZE, 0, (struct sockaddr *)&addr_to, sizeof(addr_to)), TEST_MESSAGE_SIZE,
        "Sent %zu bytes (errno=%s)", TEST_MESSAGE_SIZE, strerror(errno));
     delay_in_msec = 0;
@@ -191,14 +191,13 @@ main(void)
     diag("Test limits");
     ok((fd_recv = kit_udp_socket(AF_INET, KIT_UDP_DELAY | KIT_UDP_TTLTOS | KIT_UDP_DST_ADDR)) >= 0, "Created recv socket asking for all the things");
     addr_to.sin_family = AF_INET;
-    addr_to.sin_port = 0;
-    ok(inet_aton("127.0.0.1", &addr_to.sin_addr), "Created IP address");
-    ok(bind(fd_recv, (struct sockaddr *)&addr_to, sizeof(addr_to)) >= 0, "Bound IP address to socket");
-    addr_len = sizeof(addr_to);
-    ok(getsockname(fd_recv, &addr_to, &addr_len) >= 0, "Got bound sockaddr");
-    ok(addr_to.sin_port != 0, "Port was set to %hu", ntohs(addr_to.sin_port));
-
-    ok((fd_send = socket(AF_INET, SOCK_DGRAM, 0)) >= 0, "Recreated send socket");
+    addr_to.sin_port   = 0;
+    addr_len           = sizeof(addr_to);
+    ok(inet_aton("127.0.0.1", &addr_to.sin_addr),                         "Created IP address");
+    ok(bind(fd_recv, (struct sockaddr *)&addr_to, sizeof(addr_to)) >= 0,  "Bound IP address to socket");
+    ok(getsockname(fd_recv, (struct sockaddr *)&addr_to, &addr_len) >= 0, "Got bound sockaddr");
+    ok(addr_to.sin_port != 0,                                             "Port was set to %hu", ntohs(addr_to.sin_port));
+    ok((fd_send = socket(AF_INET, SOCK_DGRAM, 0)) >= 0,                   "Recreated send socket");
     addr_from.sin_family = AF_INET;
     addr_from.sin_port = 0;
     ok(inet_aton("127.1.2.3", &addr_from.sin_addr), "Created IP address");

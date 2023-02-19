@@ -21,6 +21,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#define _GNU_SOURCE      // For the pipe2 glibc extension
 #include <sxe-util.h>
 #include <fcntl.h>
 #include <tap.h>
