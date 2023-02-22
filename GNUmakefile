@@ -1,4 +1,4 @@
-LIBRARIES=	kit
+LIBRARIES=	libkit
 
 DST.lib+=	$(DST.dir)/libkit$(EXT.lib)
 

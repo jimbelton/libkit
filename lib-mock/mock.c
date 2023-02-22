@@ -26,55 +26,55 @@
 #include <Windows.h>
 #endif
 
-#define MOCK_CDECL
-#define MOCK_DEF(type, scope, function, parameters) type (MOCK_ ## scope * mock_ ## function) parameters = function
+#define __cdecl    // __cdecl is the default on Windows, and the one and only on other platforms
+#define MOCK_DEF(type, scope, function, parameters) type (__ ## scope * mock_ ## function) parameters = function
 
-/* Declarations of the mock function table.  For Windows, CRT functions have CDECL, OS (e.g. WinSock) APIs have STDCALL
- *       Return Type   CRT/OS   Function     Parameter Types
+/* Declarations of the mock function table.   For Windows, CRT functions have __cdecl, OS (e.g. WinSock) APIs have __stdcall
+ *       Return Type   CRT/OS   Function      Parameter Types
  */
-MOCK_DEF(MOCK_SOCKET,  STDCALL, accept,      (MOCK_SOCKET, struct sockaddr *, MOCK_SOCKLEN_T *));
-MOCK_DEF(MOCK_SOCKET,  STDCALL, accept4,     (MOCK_SOCKET, struct sockaddr *, MOCK_SOCKLEN_T *, int));
-MOCK_DEF(int,          STDCALL, bind,        (MOCK_SOCKET, const struct sockaddr *, MOCK_SOCKLEN_T));
-MOCK_DEF(int,          STDCALL, getaddrinfo, (const char *, const char *, const struct addrinfo *, struct addrinfo **));
-MOCK_DEF(void *,       CDECL,   calloc,      (size_t, size_t));
-MOCK_DEF(int,          CDECL,   close,       (int));
-MOCK_DEF(int,          STDCALL, connect,     (MOCK_SOCKET, const struct sockaddr *, MOCK_SOCKLEN_T));
-MOCK_DEF(FILE *,       CDECL,   fopen,       (const char * file, const char * mode));
-MOCK_DEF(int,          CDECL,   fputs,       (const char * string, FILE * file));
-MOCK_DEF(int,          STDCALL, getsockopt,  (MOCK_SOCKET, int, int, MOCK_SOCKET_VOID *, MOCK_SOCKLEN_T * __restrict));
-MOCK_DEF(int,          CDECL,   gettimeofday,(struct timeval * __restrict tm, __timezone_ptr_t __restrict tz));
-MOCK_DEF(off_t,        CDECL,   lseek,       (int fd, off_t offset, int whence));
-MOCK_DEF(int,          STDCALL, listen,      (MOCK_SOCKET, int));
-MOCK_DEF(void *,       CDECL,   malloc,      (size_t));
-MOCK_DEF(MOCK_SSIZE_T, STDCALL, recvfrom,    (MOCK_SOCKET, MOCK_SOCKET_VOID *, MOCK_SOCKET_SSIZE_T, int, struct sockaddr *, MOCK_SOCKLEN_T *));
-MOCK_DEF(MOCK_SSIZE_T, STDCALL, send,        (MOCK_SOCKET, const MOCK_SOCKET_VOID *, MOCK_SOCKET_SSIZE_T, int));
-MOCK_DEF(MOCK_SSIZE_T, STDCALL, sendto,      (MOCK_SOCKET, const MOCK_SOCKET_VOID *, MOCK_SOCKET_SSIZE_T, int, const struct sockaddr *, MOCK_SOCKLEN_T));
-MOCK_DEF(MOCK_SOCKET,  STDCALL, socket,      (int, int, int));
-MOCK_DEF(MOCK_SSIZE_T, CDECL,   recv,        (int, void *, MOCK_SIZE_T, int));
-MOCK_DEF(MOCK_SSIZE_T, CDECL,   write,       (int, const void *, MOCK_SIZE_T));
-MOCK_DEF(MOCK_SSIZE_T, CDECL,   readv,       (int, const struct iovec *, int));
-MOCK_DEF(MOCK_SSIZE_T, CDECL,   writev,      (int, const struct iovec *, int));
-MOCK_DEF(int,          CDECL,  clock_gettime,(clockid_t clk_id, struct timespec *tp));
+MOCK_DEF(MOCK_SOCKET, stdcall, accept,       (MOCK_SOCKET, struct sockaddr *, socklen_t *));
+MOCK_DEF(MOCK_SOCKET, stdcall, accept4,      (MOCK_SOCKET, struct sockaddr *, socklen_t *, int));
+MOCK_DEF(int,         stdcall, bind,         (MOCK_SOCKET, const struct sockaddr *, socklen_t));
+MOCK_DEF(int,         stdcall, getaddrinfo,  (const char *, const char *, const struct addrinfo *, struct addrinfo **));
+MOCK_DEF(void *,      cdecl,   calloc,       (size_t, size_t));    // CONVENTION EXCLUSION: Allow mocking libc calloc
+MOCK_DEF(int,         cdecl,   close,        (int));
+MOCK_DEF(int,         stdcall, connect,      (MOCK_SOCKET, const struct sockaddr *, socklen_t));
+MOCK_DEF(FILE *,      cdecl,   fopen,        (const char * file, const char * mode));
+MOCK_DEF(int,         cdecl,   fputs,        (const char * string, FILE * file));
+MOCK_DEF(int,         stdcall, getsockopt,   (MOCK_SOCKET, int, int, MOCK_SOCKET_VOID *, socklen_t * __restrict));
+MOCK_DEF(int,         cdecl,   gettimeofday, (struct timeval * __restrict tm, __timezone_ptr_t __restrict tz));
+MOCK_DEF(off_t,       cdecl,   lseek,        (int fd, off_t offset, int whence));
+MOCK_DEF(int,         stdcall, listen,       (MOCK_SOCKET, int));
+MOCK_DEF(void *,      cdecl,   malloc,       (size_t));            // CONVENTION EXCLUSION: Allow mocking libc malloc
+MOCK_DEF(ssize_t,     stdcall, recvfrom,     (MOCK_SOCKET, MOCK_SOCKET_VOID *, MOCK_SOCKET_SSIZE_T, int, struct sockaddr *, socklen_t *));
+MOCK_DEF(ssize_t,     stdcall, send,         (MOCK_SOCKET, const MOCK_SOCKET_VOID *, MOCK_SOCKET_SSIZE_T, int));
+MOCK_DEF(ssize_t,     stdcall, sendto,       (MOCK_SOCKET, const MOCK_SOCKET_VOID *, MOCK_SOCKET_SSIZE_T, int, const struct sockaddr *, socklen_t));
+MOCK_DEF(MOCK_SOCKET, stdcall, socket,       (int, int, int));
+MOCK_DEF(ssize_t,     cdecl,   recv,         (int, void *, size_t, int));
+MOCK_DEF(ssize_t,     cdecl,   write,        (int, const void *, size_t));
+MOCK_DEF(ssize_t,     cdecl,   readv,        (int, const struct iovec *, int));
+MOCK_DEF(ssize_t,     cdecl,   writev,       (int, const struct iovec *, int));
+MOCK_DEF(int,         cdecl,   clock_gettime,(clockid_t clk_id, struct timespec *tp));
 
 #ifdef WINDOWS_NT
-MOCK_DEF(DWORD,        STDCALL, timeGetTime, (void));
-MOCK_DEF(int,          CDECL,   mkdir,       (const char * pathname));
+MOCK_DEF(DWORD,       stdcall, timeGetTime,  (void));
+MOCK_DEF(int,         cdecl,   mkdir,        (const char * pathname));
 #else
 # if defined(__APPLE__)
-MOCK_DEF(int         , STDCALL, sendfile,    (int, int, off_t, off_t *, struct sf_hdtr *, int));
+MOCK_DEF(int,         stdcall, sendfile,     (int, int, off_t, off_t *, struct sf_hdtr *, int));
 # elif defined(__FreeBSD__)
-MOCK_DEF(int         , STDCALL, sendfile,    (int, int, off_t, size_t, struct sf_hdtr *, off_t *, int));
+MOCK_DEF(int,         stdcall, sendfile,     (int, int, off_t, size_t, struct sf_hdtr *, off_t *, int));
 # else
-MOCK_DEF(MOCK_SSIZE_T, STDCALL, sendfile,    (int, int, off_t *, size_t));
+MOCK_DEF(ssize_t, stdcall, sendfile,     (int, int, off_t *, size_t));
 # endif
-MOCK_DEF(int,          CDECL,   mkdir,       (const char * pathname, mode_t mode));
-MOCK_DEF(void,         CDECL,   openlog,     (const char * ident, int option, int facility));
-MOCK_DEF(void,         CDECL,   syslog,      (int priority, const char * format, ...));
+MOCK_DEF(int,         cdecl,   mkdir,        (const char * pathname, mode_t mode));
+MOCK_DEF(void,        cdecl,   openlog,      (const char * ident, int option, int facility));
+MOCK_DEF(void,        cdecl,   syslog,       (int priority, const char * format, ...));
 #endif
 
 /* The following mock was removed because the function that it mocks cannot be linked statically with the debian version of glibc.
  * If you need to mock this function, put it in a separate file so that only the program that uses it requires dynamic linking.
  */
 #ifdef DYNAMIC_LINKING_REQUIRED
-MOCK_DEF(struct hostent *, STDCALL, gethostbyname, (const char *));
+MOCK_DEF(struct hostent *, stdcall, gethostbyname, (const char *));
 #endif
