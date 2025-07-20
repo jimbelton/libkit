@@ -21,16 +21,17 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <mockfail.h>
+
+#include <kit.h>
+#include <kit-alloc.h>
+#include <kit-mockfail.h>
 #include <stdint.h>
 #include <string.h>
 #include <sxe-log.h>
 
-#include "kit.h"
-#include "kit-alloc.h"
-
 /**
- * Add an element to a sorted array
+ * Add an element to a sorted array. If KIT_SORTEDARRAY_ZERO flag is set caller SHOULD assign the returned pointer
+ * a value immediately to avoid possible unsorted array.
  *
  * @param type    Object definining the type of elements of the array
  * @param array   Pointer to the address of the array in malloced storage; *array == NULL to allocate first time
@@ -61,13 +62,12 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
         key  = (const uint8_t *)element + type->keyoffset;
 
         if ((cmp = type->cmp(slot + type->keyoffset, key)) == 0)    // Already exists
-            return false;
+            return NULL;
 
         if (cmp > 0) {    // Out of order
             // This (actually the memmove() below) is expensive when building large pref blocks
             if (flags & KIT_SORTEDARRAY_ALLOW_INSERTS) {
-                pos  = kit_sortedarray_find(type, *array, *count, key, &match);
-                slot = (uint8_t *)*array + pos * type->size;
+                pos = kit_sortedarray_find(type, *array, *count, key, &match);
 
                 if (match)    // Already exists
                     return NULL;
@@ -89,9 +89,9 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
 
     // First time through, allocate the array; if more space is needed, reallocate
     if (!*array || more) {
-        if (!(new_array = MOCKFAIL(kit_sortedarray_add, NULL, kit_realloc(*array, (*alloc + more) * type->size)))) {
+        if (!(new_array = MOCKERROR(kit_sortedarray_add, NULL, ENOMEM, kit_realloc(*array, (*alloc + more) * type->size)))) {
             SXEL2("Failed to allocate array of %u %zu byte elements", *alloc + more, type->size);
-            return false;
+            return NULL;
         }
 
         *array  = new_array;
@@ -99,13 +99,22 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
     }
 
     slot = (uint8_t *)*array + pos * type->size;
-    SXEL7("Inserting element %s at position %u", (*type->fmt)((const uint8_t *)element + type->keyoffset), pos);
+    SXEL7("Inserting element %s at position %u", kit_sortedarray_element_to_str(type, element, 0), pos);
 
     if (pos < *count)
         memmove(slot + type->size, slot, (*count - pos) * type->size);
 
     if (!(flags & KIT_SORTEDARRAY_ZERO_COPY))
         memcpy(slot, element, type->size);
+#if SXE_DEBUG
+    /**
+     * In the case of KIT_SORTEDARRAY_ZERO_COPY -
+     * corrupt memory intentionally, forcing caller
+     * to populate the returned memory address
+     */
+    else
+        memset(slot, 0xa5, type->size);
+#endif
 
     (*count)++;
     return slot;
@@ -150,12 +159,12 @@ kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *arr
 
     SXEA6(pos == count || type->cmp(key, (const uint8_t *)array + type->size * pos + type->keyoffset) <= 0,
           "Unexpected pos %u looking for %s, landed on %s", pos, (*type->fmt)(key),
-          (*type->fmt)((const uint8_t *)array + type->size * pos + type->keyoffset));
+          kit_sortedarray_element_to_str(type, array, pos));
 
     SXEL7("%s(me=?, count=%u, key=%s) // return %u, val %s, prev %s, next %s", __FUNCTION__, count, (*type->fmt)(key), pos,
-          pos < count     ? type->fmt((const uint8_t *)array + type->size * pos + type->keyoffset)       : "NOT FOUND",
-          pos > 0         ? type->fmt((const uint8_t *)array + type->size * (pos - 1) + type->keyoffset) : "NONE",
-          pos + 1 < count ? type->fmt((const uint8_t *)array + type->size * (pos + 1) + type->keyoffset) : "NONE");
+          pos < count     ? kit_sortedarray_element_to_str(type, array, pos)     : "NOT FOUND",
+          pos > 0         ? kit_sortedarray_element_to_str(type, array, pos - 1) : "NONE",
+          pos + 1 < count ? kit_sortedarray_element_to_str(type, array, pos + 1) : "NONE");
 
     return pos;
 }
@@ -163,10 +172,40 @@ kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *arr
 const void *
 kit_sortedarray_get(const struct kit_sortedelement_class *class, const void *array, unsigned count, const void *key)
 {
-    bool match;
+    bool match = false;
 
     SXEA6(array || count == 0, "kit_sortedarray_get called with a NULL array and count %u", count);
     unsigned pos = array ? kit_sortedarray_find(class, array, count, key, &match) : count;
 
     return match ? (const uint8_t *)array + class->size * pos : NULL;
+}
+
+/**
+ * Delete key element from sorted array, returning true if the key is found and removed and decrementing count.
+ *
+ * @param type      Defines the type of the elements
+ * @param array     The array to search
+ * @param count     Number of elements in the array
+ * @param key       The key to delete
+ *
+ * @return Boolean value equaling true if the key is found and deleted successfully, false otherwise.
+ */
+bool
+kit_sortedarray_delete(const struct kit_sortedelement_class *type, void *array, unsigned *count, const void *key)
+{
+    bool     match;
+    unsigned pos;
+
+    if (!array || *count == 0)
+        return false;
+
+    pos = kit_sortedarray_find(type, array, *count, key, &match);
+
+    if (!match)
+        return false;
+
+    memmove((uint8_t *)array + pos * type->size, (uint8_t *)array + (pos + 1) * type->size, (size_t)(*count - pos - 1) * type->size);
+    (*count)--;
+
+    return true;
 }

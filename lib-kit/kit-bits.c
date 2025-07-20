@@ -57,7 +57,7 @@ kit_bits_equal(const void *s1, const void *s2, size_t num_bits)
 }
 
 bool
-kit_bits_isset_any(void *bits, size_t num_bits)
+kit_bits_isset_any(const void *bits, size_t num_bits)
 {
     size_t byte, whole_bytes = num_bits / 8;
 

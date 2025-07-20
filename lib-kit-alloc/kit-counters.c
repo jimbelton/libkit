@@ -34,12 +34,12 @@
  * creation.
  */
 
-#include <pthread.h>
-#include <stdio.h>
-#include <string.h>
-
 #include "kit-alloc-private.h"
 #include "kit-counters.h"
+
+#include <pthread.h>
+#include <string.h>
+#include <sxe-util.h>
 
 #define COUNTER_ISVALID(c) (((c) != KIT_COUNTERS_INVALID) && ((c) <= num_counters))
 
@@ -58,7 +58,7 @@ static bool          thread0_initialized = false;
 static bool          allow_shared        = false;
 static kit_mibfn_t   mibfns[KIT_COUNTERS_MAX];
 static kit_counter_t sorted_index[KIT_COUNTERS_MAX];
-static char         *counter_txt[KIT_COUNTERS_MAX];
+static const char   *counter_txt[KIT_COUNTERS_MAX];
 static unsigned      max_counters;
 static unsigned      num_counters;
 static unsigned      num_handlers;
@@ -100,13 +100,10 @@ add_counter(const char *txt, unsigned long long (*combine_handler)(int), kit_mib
 {
     kit_counter_t counter;
 
-    if (!kit_memory_is_initialized())       // Make sure memory counters are initialized before calling kit-alloc functions
-        kit_memory_init_internal(false);    // Do a soft initialize on the counters
-
     counter = ++num_counters;
-    KIT_ASSERT(counter < KIT_COUNTERS_MAX, "Counter %d exceeds KIT_COUNTERS_MAX (%d).", counter, KIT_COUNTERS_MAX);
-    KIT_ASSERT(!counter_txt[counter], "Adding counter %d with value '%s' when it already has a value '%s'.", counter, txt, counter_txt[counter]);
-    KIT_ASSERT(counter_txt[counter] = kit_strdup(txt), "Failed to allocate %zu bytes for counter text.", strlen(txt));
+    SXEA1(counter < KIT_COUNTERS_MAX, "Counter %d exceeds KIT_COUNTERS_MAX (%d).", counter, KIT_COUNTERS_MAX);
+    SXEA1(!counter_txt[counter], "Adding counter %d with value '%s' when it already has a value '%s'.", counter, txt, counter_txt[counter]);
+    counter_txt[counter] = txt;
     add_to_sorted_index(counter, counter_txt[counter]);
 
     if (combine_handler) {
@@ -143,24 +140,47 @@ kit_counter_txt(kit_counter_t c)
     return COUNTER_ISVALID(c) ? counter_txt[c] : NULL;
 }
 
-/* Assign and return a new counter */
+/**
+ * Register and return a new counter
+ *
+ * @param txt Name of the counter (e.g. memory.malloc)
+ *
+ * @note The txt is not duplicated, so it must be static or in memory reserved by the caller for the lifetime of the counter
+ */
 kit_counter_t
-kit_counter_new(const char *txt)
+kit_counter_reg(const char *txt)
 {
+    SXEA1(txt, "Can't register a counter with no text.");
     return add_counter(txt, NULL, NULL);
 }
 
-/* Assign and return a new counter, specifying a combine handler */
+/**
+ * Register and return a new counter, specifying a combine handler
+ *
+ * @param txt             Name of the counter (e.g. memory.bytes)
+ * @param combine_handler Pointer to a function that combines the per thread values (e.g. takes the maximum)
+ *
+ * @note The txt is not duplicated, so it must be static or in memory reserved by the caller for the lifetime of the counter
+ */
 kit_counter_t
-kit_counter_new_with_combine_handler(const char *txt, unsigned long long (*combine_handler)(int))
+kit_counter_reg_with_combine_handler(const char *txt, unsigned long long (*combine_handler)(int))
 {
+    SXEA1(txt, "Can't register a counter with no text.");
     return add_counter(txt, combine_handler, NULL);
 }
 
-/* Assign and return a new counter, specifying a mib function */
+/**
+ * Register and return a new counter, specifying a mib function
+ *
+ * @param txt   Name of the counter (e.g. memory.bytes)
+ * @param mibfn Pointer to a function that allows special handling of the mib text
+ *
+ * @note The txt is not duplicated, so it must be static or in memory reserved by the caller for the lifetime of the counter
+ */
 kit_counter_t
-kit_counter_new_with_mibfn(const char *txt, kit_mibfn_t mibfn)
+kit_counter_reg_with_mibfn(const char *txt, kit_mibfn_t mibfn)
 {
+    SXEA1(txt, "Can't register a counter with no text.");
     return add_counter(txt, NULL, mibfn);
 }
 
@@ -178,7 +198,7 @@ kit_counters_are_shared(void)
         return false;
     }
 
-    KIT_ASSERT(allow_shared, "Shared counters have been disabled and this thread's counters aren't initialized");
+    SXEA1(allow_shared, "Shared counters have been disabled and this thread's counters aren't initialized");
     return true;
 }
 
@@ -220,38 +240,38 @@ kit_counter_decr(kit_counter_t c)
  * @params counts        Maximum number of counters supported; defaults to KIT_COUNTERS_MAX and currently aborts if greater
  * @params threads       Maximum number of threads supported; more can be requested with kit_counters_prepare_dynamic_threads
  * @params allow_sharing True (default) to allow shared counters (which are slower) to be used after initialization
- *
- * @notes Counters may be used at startup by the main thread before this function is called.
  */
 void
 kit_counters_initialize(unsigned counts, unsigned threads, bool allow_sharing)
 {
     unsigned i;
 
-    KIT_TRACE("%s(counts=%u,threads=%u,allow_sharing=%s)", __FUNCTION__, counts, threads, allow_sharing ? "true" : "false");
-    KIT_ASSERT(counts <= KIT_COUNTERS_MAX, "Currently, counts cannot be greater than %u", KIT_COUNTERS_MAX);
-    KIT_ASSERT(threads,               "At least one counter slot is required");
-    KIT_ASSERT(!initialized,          "%s(): Already initialized!",   __FUNCTION__);
+    SXEE6("(counts=%u,threads=%u,allow_sharing=%s)", counts, threads, allow_sharing ? "true" : "false");
+    SXEA1(counts <= KIT_COUNTERS_MAX,  "Currently, counts cannot be greater than %u", KIT_COUNTERS_MAX);
+    SXEA1(threads,                     "At least one counter slot is required");
+    SXEA1(!initialized,                "Already initialized!");
+
+    kit_memory_initialize(~0U);    // Initialize memory with default flags or flags set with kit_memory_flags_set
 
     if (!thread0_initialized) {    // If no counter has been touched
-        KIT_CHECK(!thread_counters, "Per thread counters are set without initializing the main thread");
+        SXEA6(!thread_counters, "Per thread counters are set without initializing the main thread");
         thread_counters     = &thread0_counters;
         thread0_initialized = true;
     }
 
-    KIT_CHECK(!all_counters && !counter_state, "%s(): Partially initialized!",   __FUNCTION__);
+    SXEA6(!all_counters && !counter_state, "Partially initialized!");
     pthread_spin_init(&counter_lock, PTHREAD_PROCESS_PRIVATE);
     initialized  = true;
     max_counters = counts;
     maxthreads   = threads;
     allow_shared = allow_sharing;
-    KIT_ASSERT(counter_state = kit_malloc(maxthreads * sizeof(*counter_state)),
+    SXEA1(counter_state = kit_malloc(maxthreads * sizeof(*counter_state)),
           "Failed to allocate %zu bytes for per-thread counter_state", maxthreads * sizeof(*counter_state));
 
     for (i = 0; i < maxthreads; i++)
         counter_state[i] = COUNTER_STATIC;
 
-    KIT_ASSERT(all_counters = kit_malloc(maxthreads * sizeof(*all_counters)),
+    SXEA1(all_counters = kit_malloc(maxthreads * sizeof(*all_counters)),
           "Failed to allocate %zu bytes for per-thread counter block pointers", maxthreads * sizeof(*all_counters));
 
     all_counters[0]   = &thread0_counters;
@@ -259,8 +279,11 @@ kit_counters_initialize(unsigned counts, unsigned threads, bool allow_sharing)
     memset(&thread0_counters, 0, sizeof(thread0_counters));    // Throw away any early counts, some of which will be invalid
 
     for (i = 1; i < maxthreads; i++)
-        KIT_ASSERT(all_counters[i] = kit_calloc(1, sizeof(*all_counters[i])),
+        SXEA1(all_counters[i] = kit_calloc(1, sizeof(*all_counters[i])),
               "Failed to allocate %zu bytes for a thread counter block", maxthreads * sizeof(*all_counters[i]));
+
+    kit_memory_initialize_counters();    // Tell the memory system to switch over to using counters
+    SXER6("return");
 }
 
 /**
@@ -280,7 +303,7 @@ kit_counters_combine(struct kit_counters *out_counter, int threadnum)
 {
     unsigned from, i, n, to;
 
-    KIT_CHECK(all_counters && out_counter, "Can't combine counters that aren't initialized");
+    SXEA6(all_counters && out_counter, "Can't combine counters that aren't initialized");
     from = threadnum == -1 ? 0 : (unsigned)threadnum;
     to   = threadnum == -1 ? maxthreads : (unsigned)threadnum < maxthreads ? (unsigned)threadnum + 1 : maxthreads;
 
@@ -309,9 +332,9 @@ kit_counters_combine(struct kit_counters *out_counter, int threadnum)
 void
 kit_counters_init_thread(unsigned slot)
 {
-    KIT_CHECK(initialized,                           "Counters not yet initialized");
-    KIT_ASSERT(slot < maxthreads,                     "thread initialized as slot %u, but slot_count is %u", slot, maxthreads);
-    KIT_ASSERT(!(counter_state[slot] & COUNTER_USED), "thread initialized as slot %u, but that slot is already in use", slot);
+    SXEA6(initialized,                           "Counters not yet initialized");
+    SXEA1(slot < maxthreads,                     "thread initialized as slot %u, but slot_count is %u", slot, maxthreads);
+    SXEA1(!(counter_state[slot] & COUNTER_USED), "thread initialized as slot %u, but that slot is already in use", slot);
     thread_counters      = all_counters[slot];
     counter_state[slot] |= COUNTER_USED;
 }
@@ -319,10 +342,10 @@ kit_counters_init_thread(unsigned slot)
 void
 kit_counters_fini_thread(unsigned slot)
 {
-    KIT_CHECK(initialized,                           "Counters not yet initialized");
-    KIT_ASSERT(slot < maxthreads,                     "thread finailized at slot %u, but slot_count is %u", slot, maxthreads);
-    KIT_ASSERT(counter_state[slot] & COUNTER_USED,    "thread finalized at slot %u, but that slot isn't in use", slot);
-    KIT_ASSERT(thread_counters == all_counters[slot], "thread finalized at wrong slot %u", slot);
+    SXEA6(initialized,                           "Counters not yet initialized");
+    SXEA1(slot < maxthreads,                     "thread finailized at slot %u, but slot_count is %u", slot, maxthreads);
+    SXEA1(counter_state[slot] & COUNTER_USED,    "thread finalized at slot %u, but that slot isn't in use", slot);
+    SXEA1(thread_counters == all_counters[slot], "thread finalized at wrong slot %u", slot);
     kit_counters_combine(&dead_thread_counters, slot);
     memset(thread_counters, '\0', sizeof(*thread_counters));
     thread_counters = &dead_thread_counters;    /* So that thread destructors can call kit_free() - see pthread_key_create() */
@@ -345,13 +368,13 @@ kit_counter_get_data(kit_counter_t c, int threadnum)
     unsigned long long out_counter = 0;
     unsigned from, i, to;
 
-    KIT_CHECK(threadnum >= 0 || threadnum == KIT_THREAD_TOTAL || threadnum == KIT_THREAD_SHARED, "Invalid threadnum");
-    KIT_CHECK(thread0_initialized,                            "%s: Main thread not initialized!",    __FUNCTION__);
-    KIT_CHECK(allow_shared || threadnum != KIT_THREAD_SHARED, "%s: Shared counters are not enabled", __FUNCTION__);
+    SXEA6(threadnum >= 0 || threadnum == KIT_THREAD_TOTAL || threadnum == KIT_THREAD_SHARED, "Invalid threadnum");
+    SXEA6(thread0_initialized,                            "%s: Main thread not initialized!",    __FUNCTION__);
+    SXEA6(allow_shared || threadnum != KIT_THREAD_SHARED, "%s: Shared counters are not enabled", __FUNCTION__);
 
     if (c <= num_counters && threadnum < (int)maxthreads) {
         if (!initialized) {
-            KIT_ASSERT(thread_counters == &thread0_counters, "Can only be called by the main thread before counter initialization");
+            SXEA1(thread_counters == &thread0_counters, "Can only be called by the main thread before counter initialization");
             out_counter = thread_counters->val[c];
         } else if (threadnum == KIT_THREAD_SHARED) {
             out_counter = shared_counters.val[c];
@@ -422,7 +445,7 @@ kit_counters_init_dynamic_thread(void)
 {
     unsigned slot;
 
-    KIT_CHECK(initialized, "Counters not yet initialized");
+    SXEA6(initialized, "Counters not yet initialized");
 
     pthread_spin_lock(&counter_lock);
 
@@ -430,7 +453,7 @@ kit_counters_init_dynamic_thread(void)
         if (counter_state[slot] == COUNTER_DYNAMIC)
             break;
 
-    KIT_ASSERT(slot < maxthreads, "Cannot locate a dynamic thread slot");
+    SXEA1(slot < maxthreads, "Cannot locate a dynamic thread slot");
     thread_counters = all_counters[slot];
     counter_state[slot] |= COUNTER_USED;
 
@@ -444,10 +467,10 @@ void
 kit_counters_prepare_dynamic_threads(unsigned count)
 {
     struct kit_counters **ncounters, **ocounters;
-    uint8_t *nstate, nthreads, *ostate;
-    unsigned done, i;
+    unsigned done, i, nthreads;
+    uint8_t *nstate, *ostate;
 
-    KIT_CHECK(initialized, "Counters not yet initialized");
+    SXEA6(initialized, "Counters not yet initialized");
 
     if (count) {
         pthread_spin_lock(&counter_lock);
@@ -462,14 +485,14 @@ kit_counters_prepare_dynamic_threads(unsigned count)
 
         while (done < count) {
             nthreads = maxthreads + count - done;
-            KIT_ASSERT(nstate = kit_malloc(nthreads * sizeof(*nstate)),
+            SXEA1(nstate = kit_malloc(nthreads * sizeof(*nstate)),
                   "Failed to allocate %zu bytes for per-thread counter_state", nthreads * sizeof(*nstate));
-            KIT_ASSERT(ncounters = kit_malloc(nthreads * sizeof(*ncounters)),
+            SXEA1(ncounters = kit_malloc(nthreads * sizeof(*ncounters)),
                   "Failed to allocate %zu bytes for per-thread counter block pointers", nthreads * sizeof(*ncounters));
 
             for (i = maxthreads; i < nthreads; i++) {
                 nstate[i] = COUNTER_DYNAMIC;
-                KIT_ASSERT(ncounters[i] = kit_malloc(sizeof(*ncounters[i])),
+                SXEA1(ncounters[i] = kit_malloc(sizeof(*ncounters[i])),
                       "Failed to allocate %zu bytes for a thread counter block", sizeof(*ncounters[i]));
             }
 
@@ -499,9 +522,9 @@ kit_counters_prepare_dynamic_threads(unsigned count)
 void
 kit_counters_fini_dynamic_thread(unsigned slot)
 {
-    KIT_CHECK(initialized, "Counters not yet initialized");
-    KIT_ASSERT(slot < maxthreads, "thread finalized as slot %u, but slot_count is %u", slot, maxthreads);
-    KIT_ASSERT(counter_state[slot] == (COUNTER_USED|COUNTER_DYNAMIC), "thread finalized as slot %u, but that slot is not dynamic and in use", slot);
+    SXEA6(initialized, "Counters not yet initialized");
+    SXEA1(slot < maxthreads, "thread finalized as slot %u, but slot_count is %u", slot, maxthreads);
+    SXEA1(counter_state[slot] == (COUNTER_USED|COUNTER_DYNAMIC), "thread finalized as slot %u, but that slot is not dynamic and in use", slot);
     kit_counters_combine(&dead_thread_counters, slot);
     thread_counters = &dead_thread_counters;    /* So that thread destructors can call kit_free() - see pthread_key_create() */
     counter_state[slot] = 0;
@@ -512,7 +535,7 @@ kit_mibintree(const char *tree, const char *mib)
 {
     size_t len = strlen(tree);
 
-    return memcmp(tree, mib, len) == 0 && (len == 0 || mib[len] == '\0' || mib[len] == '.');
+    return strncmp(tree, mib, len) == 0 && (len == 0 || mib[len] == '\0' || mib[len] == '.');
 }
 
 void
@@ -526,14 +549,14 @@ kit_counters_mib_text(const char *subtree, void *v, kit_counters_mib_callback_t 
     kit_counter_t c;
     unsigned i;
 
-    KIT_TRACE("%s(subtree=%s,v=%p,cb=%p,threadnum=%d)", __FUNCTION__, subtree, v, cb, threadnum);
+    SXEE6("(subtree=%s,v=%p,cb=%p,threadnum=%d)", subtree, v, cb, threadnum);
 
     memset(&counter_totals, '\0', sizeof(counter_totals));
     kit_counters_combine(&counter_totals, threadnum);
 
     for (i = 0; i < num_counters; i++) {
         c = kit_sorted_index(i);
-        KIT_CHECK(kit_counter_isvalid(c), "Invalid counter %u at index %u", c, i);
+        SXEA6(kit_counter_isvalid(c), "Invalid counter %u at index %u", c, i);
 
         val = counter_totals.val[c];
         name = kit_counter_txt(c);
@@ -548,4 +571,6 @@ kit_counters_mib_text(const char *subtree, void *v, kit_counters_mib_callback_t 
             cb(v, name, buf);
         }
     }
+
+    SXER6("return");
 }

@@ -37,7 +37,7 @@ main(int argc, char **argv)
     SXE_UNUSED_PARAMETER(argc);
     SXE_UNUSED_PARAMETER(argv);
 
-    plan_tests(50);
+    plan_tests(85);
 
     diag("Verify normal valid parsing");
     {
@@ -119,6 +119,66 @@ main(int argc, char **argv)
 
         is(kit_strtoull("0x1ffffffffffffffff", NULL, 16), ULLONG_MAX, "Test for overflow");
         is(errno, ERANGE, "There was an overflow and errno was set to ERANGE");
+
+        is(kit_strtoull("18446744073709551615", NULL, 10), ULLONG_MAX, "Test for upper bound");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtoull("18446744073709551616", NULL, 10), -1, "Test for overflow");
+        is(errno, ERANGE, "There was an overflow and errno was set to ERANGE");
+    }
+
+    diag("Verify kit_strtou32 parsing");
+    {
+        is(kit_strtou32("12345678", NULL, 10), 12345678, "kit_strtou32 parses correctly");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("0", NULL, 0), 0, "kit_strtou32 correctly parses 0");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("0x0", NULL, 0), 0, "kit_strtou32 correctly parses 0x0");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("  \t  0", NULL, 10), 0, "kit_strtou32 correctly parses 0 with leading whitespace");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("4294967295", NULL, 10), UINT32_MAX, "kit_strtou32 correctly parses UINT32_MAX");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("4294967296", NULL, 10), UINT32_MAX, "kit_strtou32 correctly handles overflow");
+        is(errno, ERANGE, "errno is set to ERANGE on overflow");
+
+        is(kit_strtou32("-1", NULL, 10), UINT32_MAX, "kit_strtou32 correctly handles negative value");
+        is(errno, ERANGE, "errno is set to ERANGE on negative value");
+
+        str = "1234";
+        is(kit_strtou32(str, &endptr, 10), 1234, "kit_strtou32 valid parsing to clear errno");
+        is(errno, 0, "errno was cleared after valid parsing");
+        is(str + 4, endptr, "kit_strtou32 valid parsing advanced endptr");
+
+        str = "4294967296";
+        is(kit_strtou32(str, &endptr, 10), UINT32_MAX, "kit_strtou32 overflow parsing");
+        is(errno, ERANGE, "errno is set to ERANGE on overflow");
+        is(str + 10, endptr, "kit_strtou32 overflow parsing advanced endptr");
+    }
+
+    diag("Verify kit_strtou32 parsing with hexadecimal strings");
+    {
+        is(kit_strtou32("0x1A2B3C4D", NULL, 16), 0x1A2B3C4D, "kit_strtou32 correctly parses hexadecimal 0x1A2B3C4D");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("0xFFFFFFFF", NULL, 16), UINT32_MAX, "kit_strtou32 correctly parses hexadecimal UINT32_MAX");
+        is(errno, 0, "errno is not set");
+
+        is(kit_strtou32("0x100000000", NULL, 16), UINT32_MAX, "kit_strtou32 correctly handles hexadecimal overflow");
+        is(errno, ERANGE, "errno is set to ERANGE on hexadecimal overflow");
+
+        is(kit_strtou32("0xGHIJKL", NULL, 16), 0, "kit_strtou32 correctly handles invalid hexadecimal");
+        is(errno, EINVAL, "errno is set to EINVAL on invalid hexadecimal");
+
+        str = "0x1A2B3C4D";
+        is(kit_strtou32(str, &endptr, 16), 0x1A2B3C4D, "kit_strtou32 valid hexadecimal parsing to clear errno");
+        is(errno, 0, "errno was cleared after valid hexadecimal parsing");
+        is(str + 10, endptr, "kit_strtou32 valid hexadecimal parsing advanced endptr");
     }
 
     return exit_status();

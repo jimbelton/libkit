@@ -79,11 +79,6 @@ struct kit_fsevent_iterator {
     ssize_t pos, len;
 };
 
-void kit_fsevent_init(struct kit_fsevent *me);
-void kit_fsevent_fini(struct kit_fsevent *me);
-int kit_fsevent_add_watch(struct kit_fsevent *me, const char *mon, int how);
-void kit_fsevent_rm_watch(struct kit_fsevent *me, int fd);
-void kit_fsevent_iterator_init(struct kit_fsevent_iterator *me);
-kit_fsevent_ev_t *kit_fsevent_read(struct kit_fsevent *me, struct kit_fsevent_iterator *iter);
+#include "kit-fsevent-inotify-proto.h"
 
 #endif

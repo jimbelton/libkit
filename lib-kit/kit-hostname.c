@@ -21,41 +21,39 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "kit.h"
-
+#include <errno.h>
 #include <sys/param.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "kit.h"
+#include "kit-mockfail.h"
+#include "kit-time.h"
+
 #define HOSTNAME_LOOKUP_INTERVAL 60    /* Lookup the hostname every 60 seconds from each thread */
 
+/**
+ * Get the hostname (efficiently if the cuurent thread updates the cached kit-time with kit_time_cached_update)
+ *
+ * @note Once a non-zero value is returned by kit_time_cached_sec, this function will not update the hostname again until the
+ *       cached seconds value increases by 60s. This means less system calls are made but changes will take a minute to notice.
+ */
 const char *
 kit_hostname(void)
 {
-    static __thread char hostname[MAXHOSTNAMELEN];
-    static __thread int32_t then = -1;
-    int32_t now;
+    static __thread char     hostname[MAXHOSTNAMELEN];
+    static __thread uint32_t then = 0;
+    uint32_t                 now;
 
     now = kit_time_cached_sec();
-    if (now == 0 || now > then + HOSTNAME_LOOKUP_INTERVAL) {
-        if (gethostname(hostname, sizeof(hostname)) != 0)
-            snprintf(hostname, sizeof(hostname), "Amnesiac");    /* COVERAGE EXCLUSION: todo: Make gethostname() fail */
+
+    if (then == 0 || now > then + HOSTNAME_LOOKUP_INTERVAL) {
+        if (MOCKERROR(kit_hostname, -1, EFAULT, gethostname(hostname, sizeof(hostname))) != 0)
+            snprintf(hostname, sizeof(hostname), "Amnesiac");
+
         then = now;
     }
-
-    return hostname;
-}
-
-const char *
-kit_short_hostname(void)
-{
-    const char *hostname;
-    char *dot;
-
-    hostname = kit_hostname();
-    if ((dot = strchr(hostname, '.')) != NULL && (dot = strchr(dot + 1, '.')) != NULL)
-        *dot = '\0';                                  /* COVERAGE EXCLUSION: todo: Some hostnames contain two '.'s, some don't */
 
     return hostname;
 }

@@ -28,10 +28,10 @@
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <mock.h>
 #include <tap.h>
 
 #include "kit.h"
+#include "kit-mock.h"
 
 #define TEST_MESSAGE      "0123456789ABCDEF"
 #define TEST_MESSAGE_SIZE (sizeof(TEST_MESSAGE) - 1)

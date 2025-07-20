@@ -162,3 +162,26 @@ kit_strtod(const char *str, char **endptr)
 
     return ret;
 }
+
+/**
+ * @note Sets errno to 0 on success or an error code on failure
+ */
+uint32_t
+kit_strtou32(const char *str, char **endptr, int base)
+{
+    unsigned long ret;
+
+    errno = 0;
+
+    ret = strtoul(str, endptr, base);
+    if ((ret == 0) && (errno == 0)) {
+        check_zero_result(str, endptr, base);
+    }
+
+    if (ret != (uint32_t)ret) {
+        errno = ERANGE;
+        return UINT32_MAX;
+    }
+
+    return (uint32_t)ret;
+}

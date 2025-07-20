@@ -1,0 +1,310 @@
+#include <string.h>
+#include <xmmintrin.h>
+
+#include "kit-alloc.h"
+#include "kit-mockfail.h"
+#include "sxe-dict.h"
+#include "sxe-util.h"
+
+#define hash_func       meiyan
+
+struct sxe_dict_node {
+    struct sxe_dict_node *next;
+    union {
+        char             *key;
+        const char       *key_ref;
+    };
+    size_t                len;
+    const void           *value;
+};
+
+static inline uint32_t
+meiyan(const char *key, size_t count)
+{
+    typedef const uint32_t * P;
+    uint32_t h = 0x811c9dc5;
+
+    while (count >= 8) {
+        h = (h ^ ((((*(P)key) << 5) | ((*(P)key) >> 27)) ^ *(P)(key + 4))) * 0xad3e7;
+        count -= 8;
+        key += 8;
+    }
+
+#define tmp h = (h ^ *(const uint16_t *)key) * 0xad3e7; key += 2;
+    if (count & 4) { tmp tmp }
+    if (count & 2) { tmp }
+    if (count & 1) { h = (h ^ *key) * 0xad3e7; }
+#undef tmp
+
+    return h ^ (h >> 16);
+}
+
+struct sxe_dict_node *
+sxe_dict_node_new(const struct sxe_dict *dic, const char *key, size_t len)
+{
+    struct sxe_dict_node *node = kit_malloc(sizeof(struct sxe_dict_node));
+
+    if (!node) {
+        SXEL2(": Failed to allocate dictionary node");    /* COVERAGE EXCLUSION: Out of memory */
+        return NULL;                                      /* COVERAGE EXCLUSION: Out of memory */
+    }
+
+    if (dic->flags & SXE_DICT_FLAG_KEYS_NOCOPY)
+        node->key_ref = key;
+    else {
+        node->key = kit_malloc(len + (dic->flags & SXE_DICT_FLAG_KEYS_STRING ? 1 : 0));
+        memcpy(node->key, key, len);
+
+        if (dic->flags & SXE_DICT_FLAG_KEYS_STRING)
+            node->key[len] = '\0';
+    }
+
+    node->len   = len;
+    node->next  = 0;
+    node->value = NULL;
+
+    return node;
+}
+
+static void
+sxe_dict_node_free(struct sxe_dict *dic, struct sxe_dict_node *node)
+{
+    struct sxe_dict_node *next = node->next;
+
+    if (!(dic->flags & SXE_DICT_FLAG_KEYS_NOCOPY))
+        kit_free(node->key);
+
+    kit_free(node);
+
+    if (next)
+        sxe_dict_node_free(dic, next);
+}
+
+/**
+ * Initialize a dictionary with full control of it's properties
+ *
+ * @param dic          Dictionary to initialize
+ * @param initial_size The initial size of the dictionary's hash table
+ * @param load         The percentage of hash table buckets to inserted values before the table is grown
+ * @param growth       The factor to grow by when the load is exceeded
+ * @param flags        Either SXE_DICT_FLAG_KEYS_BINARY (exact copies), SXE_DICT_FLAG_KEYS_NOCOPY (reference) or
+ *                     SXE_DICT_FLAG_KEYS_STRING (copy with NUL termination)
+ *
+ * @return true on success, false if out of memory
+ */
+bool
+sxe_dict_init(struct sxe_dict *dic, unsigned initial_size, unsigned load, unsigned growth, unsigned flags)
+{
+    dic->size   = initial_size;
+    dic->count  = 0;
+    dic->table  = initial_size ? MOCKERROR(sxe_dict_init, NULL, ENOMEM, kit_calloc(sizeof(struct sxe_dict_node *), initial_size)) : NULL;
+    dic->load   = load;
+    dic->growth = growth;
+    dic->flags  = flags;
+    return initial_size == 0 || dic->table;
+}
+
+/**
+ * Create a dictionary that grows at 100% (as many entries as buckets) by a factor of 2, and copies keys without NUL terminating
+ *
+ * @param initial_size The initial size of the dictionary's hash table
+ *
+ * @return The dictionary or NULL on out of memory
+ */
+struct sxe_dict *
+sxe_dict_new(unsigned initial_size)
+{
+    struct sxe_dict *dic = kit_malloc(sizeof(struct sxe_dict));
+
+    if (!dic || MOCKERROR(sxe_dict_new, true, ENOMEM, !sxe_dict_init(dic, initial_size, 100, 2, SXE_DICT_FLAG_KEYS_BINARY))) {
+        SXEL2(": Failed to allocate dictionary structure or buckets");
+        kit_free(dic);
+        return NULL;
+    }
+
+    return dic;
+}
+
+/**
+ * Finalize a dictionary by freeing all memory allocated to it by sxe-dict
+ *
+ * @param dic Dictionary to finalize
+ */
+void
+sxe_dict_fini(struct sxe_dict *dic)
+{
+    for (unsigned i = 0; i < dic->size; i++)
+        if (dic->table[i])
+            sxe_dict_node_free(dic, dic->table[i]);
+
+    kit_free(dic->table);
+    dic->table = NULL;
+}
+
+/**
+ * Free a dictionary after freeing all memory allocated to it by sxe-dict
+ *
+ * @param dic Dictionary to finalize
+ */
+void
+sxe_dict_free(struct sxe_dict *dic)
+{
+    if (!dic)
+        return;
+
+    sxe_dict_fini(dic);
+    kit_free(dic);
+}
+
+static void
+sxe_dict_reinsert_when_resizing(struct sxe_dict *dic, struct sxe_dict_node *k2)
+{
+    int n = hash_func(k2->key, k2->len) % dic->size;
+
+    if (dic->table[n] == 0) {
+        dic->table[n] = k2;
+        return;
+    }
+
+    struct sxe_dict_node *k = dic->table[n];
+    k2->next = k;
+    dic->table[n] = k2;
+}
+
+bool
+sxe_dict_resize(struct sxe_dict *dic, int newsize)
+{
+    unsigned               oldsize = dic->size;
+    struct sxe_dict_node **old     = dic->table;
+
+    if (!(dic->table = MOCKERROR(sxe_dict_resize, NULL, ENOMEM, kit_calloc(sizeof(struct sxe_dict_node*), newsize)))) {
+        SXEL2(": Failed to allocate bigger table");
+        dic->table = old;
+        return false;
+    }
+
+    dic->size = newsize;
+
+    for (unsigned i = 0; i < oldsize; i++) {
+        struct sxe_dict_node *node = old[i];
+
+        while (node) {
+            struct sxe_dict_node *next = node->next;
+            node->next = 0;
+            sxe_dict_reinsert_when_resizing(dic, node);
+            node = next;
+        }
+    }
+
+    kit_free(old);
+    return true;
+}
+
+/**
+ * Add a key to a dictionary
+ *
+ * @param dic The dictionary
+ * @param key The key
+ * @param len The size of the key, or 0 if it's a string to determine its length with strlen
+ *
+ * @return A pointer to a value or NULL on out of memory
+ *
+ * @note If the caller always saves a non-NULL value in the value pointed at by the return, then if there is a collision, the
+ *       value pointed to by the return should be something other than NULL.
+ */
+const void **
+sxe_dict_add(struct sxe_dict *dic, const void *key, size_t len)
+{
+    struct sxe_dict_node **link;
+
+    len = len ?: strlen(key);
+
+    if (dic->table == NULL) {    // If this is a completely empty dictionary
+        if (!(dic->table = MOCKERROR(sxe_dict_add, NULL, ENOMEM, kit_calloc(sizeof(struct sxe_dict_node *), 1)))) {
+            SXEL2(": Failed to allocate initial table");
+            return NULL;
+        }
+
+        dic->size  = 1;
+    }
+
+    unsigned hash   = hash_func(key, len);
+    unsigned bucket = hash % dic->size;
+
+    if (dic->table[bucket] != NULL) {
+        unsigned load = dic->count * 100 / dic->size;
+
+        if (load >= dic->load)
+            if (!sxe_dict_resize(dic, dic->size * dic->growth))
+                return NULL;
+
+        bucket = hash % dic->size;
+    }
+
+    for (link = &dic->table[bucket]; *link != NULL; link = &((*link)->next))    // For each node in the bucket
+        if ((*link)->len == len && memcmp((*link)->key, key, len) == 0)         // If the key matches
+            return &((*link)->value);
+
+    if ((*link = sxe_dict_node_new(dic, key, len)))
+        dic->count++;
+
+    return *link ? &((*link)->value) : NULL;
+}
+
+/**
+ * Find a key in a dictionary
+ *
+ * @param dic The dictionary
+ * @param key The key
+ * @param len The size of the key, or 0 if it's a string to determine its length with strlen
+ *
+ * @return The value, or NULL if the key is not found.
+ */
+const void *
+sxe_dict_find(const struct sxe_dict *dic, const void *key, size_t len)
+{
+    if (dic->table == NULL)    // If the dictionary is empty and its initial_size was 0, the key is not found.
+        return NULL;
+
+    len = len ?: strlen(key);
+    unsigned n = hash_func((const char *)key, len) % dic->size;
+    #if defined(__MINGW32__) || defined(__MINGW64__)
+    __builtin_prefetch(gc->table[n]);
+    #endif
+
+    #if defined(_WIN32) || defined(_WIN64)
+    _mm_prefetch((char*)gc->table[n], _MM_HINT_T0);
+    #endif
+    struct sxe_dict_node *k = dic->table[n];
+
+    if (!k)
+        return NULL;
+
+    while (k) {
+        if (k->len == len && memcmp(k->key, key, len) == 0)
+            return k->value;
+
+        k = k->next;
+    }
+
+    return NULL;
+}
+
+void
+sxe_dict_forEach(const struct sxe_dict *dic, sxe_dict_iter f, void *user)
+{
+    for (unsigned i = 0; i < dic->size; i++) {
+        if (dic->table[i] != 0) {
+            struct sxe_dict_node *k = dic->table[i];
+
+            while (k) {
+                if (!f(k->key, k->len, &k->value, user))
+                    return;
+
+                k = k->next;
+            }
+        }
+    }
+}
+
+#undef hash_func

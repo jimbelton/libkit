@@ -53,7 +53,7 @@ kit_safe_write(const int fd, const void *const buf_, size_t count, const int tim
     }
 
 SXE_EARLY_OUT:
-    result = (ssize_t)(buf - (const char *)buf_);
+    result = buf - (const char *)buf_;
 
     SXEL7("kit_safe_write(fd=%d, buf=%p, count=%zu, timeout=%d){} // %zd", fd, buf_, count, timeout, result);
     return result;
@@ -81,7 +81,7 @@ kit_safe_read(const int fd, void *const buf_, size_t count)
         buf += readnb;
     } while (count > 0);
 
-    result = (ssize_t)(buf - (unsigned char *)buf_);
+    result = buf - (unsigned char *)buf_;
 
 SXE_EARLY_OUT:
     SXER7("return %zd", result);

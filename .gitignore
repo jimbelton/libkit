@@ -13,3 +13,6 @@ build-packages/
 package/
 packages/
 cscope.*
+lib-tzcode/libtz.a
+target/
+output/

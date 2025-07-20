@@ -1,0 +1,413 @@
+/* Copyright (c) 2021 Jim Belton
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+#include <ctype.h>
+#include <errno.h>
+#include <math.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "kit-alloc.h"
+#include "kit-mockfail.h"
+#include "sxe-hash.h"
+#include "sxe-jitson.h"
+#include "sxe-log.h"
+#include "sxe-spinlock.h"
+#include "sxe-unicode.h"
+
+static pthread_mutex_t type_indexing       = PTHREAD_MUTEX_INITIALIZER;     // Lock around (slow) just in time indexing
+
+/**
+ * Allocate a jitson object and parse a JSON string into it.
+ *
+ * @param json A '\0' terminated JSON string.
+ *
+ * @return A jitson object or NULL with errno ENOMEM, EINVAL, EILSEQ, EMSGSIZE, ENODATA, ENOTUNIQ, or EOVERFLOW
+ */
+struct sxe_jitson *
+sxe_jitson_new(const char *json)
+{
+    struct sxe_jitson_stack *stack = sxe_jitson_stack_get_thread();
+
+    if (!stack)
+        return NULL;
+
+    if (!sxe_jitson_stack_parse_json(stack, json)) {
+        sxe_jitson_stack_clear(stack);
+        return NULL;
+    }
+
+    return sxe_jitson_stack_get_jitson(stack);
+}
+
+/**
+ * Get the unsigned integer value of a jitson whose type is SXE_JITSON_TYPE_NUMBER
+ *
+ * @return The numeric value as a uint64_t or ~0ULL if the value is can't be represented as a uint64_t
+ *
+ * @note If the value is can't be represented as a uint64_t, errno is set to EOVERFLOW
+ */
+uint64_t
+sxe_jitson_get_uint(const struct sxe_jitson *jitson)
+{
+    jitson = sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson;    // OK because refs to refs are not allowed
+    SXEA6(sxe_jitson_get_type(jitson) == SXE_JITSON_TYPE_NUMBER,
+          "Can't get the numeric value of a %s", sxe_jitson_type_to_str(jitson->type));
+
+    if (!(jitson->type & SXE_JITSON_TYPE_IS_UINT)) {
+        uint64_t uint = (uint64_t)jitson->number;
+
+        if ((double)uint != jitson->number) {
+            errno = EOVERFLOW;
+            return ~0ULL;
+        }
+
+        return uint;
+    }
+
+    return jitson->integer;
+}
+
+/**
+ * Get the numeric (double) value of a jitson whose type is SXE_JITSON_TYPE_NUMBER
+ *
+ * @return The numeric value as a double or NAN if the value is can't be represented as a double
+ *
+ * @note If the value is can't be represented as a double, errno is set to EOVERFLOW
+ */
+double
+sxe_jitson_get_number(const struct sxe_jitson *jitson)
+{
+    jitson = sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson;    // OK because refs to refs are not allowed
+    SXEA6(sxe_jitson_get_type(jitson) == SXE_JITSON_TYPE_NUMBER,
+          "Can't get the numeric value of a %s", sxe_jitson_type_to_str(jitson->type));
+
+    if (jitson->type & SXE_JITSON_TYPE_IS_UINT) {
+        double number = (double)jitson->integer;
+
+        if ((uint64_t)number != jitson->integer) {
+            errno = EOVERFLOW;
+            return NAN;
+        }
+
+        return number;
+    }
+
+    return jitson->number;
+}
+
+/**
+ * Get the string value of a jitson whose type is SXE_JITSON_TYPE_STRING or SXE_JITSON_TYPE_MEMBER_NAME
+ *
+ * @param jitson  Pointer to the jitson
+ * @param len_out NULL or a pointer to a variable of type size_t to return the length of the string in
+ *
+ * @return The string value; if the jitson is a non string, results are undefined
+ */
+const char *
+sxe_jitson_get_string(const struct sxe_jitson *jitson, size_t *len_out)
+{
+    jitson = sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson;    // OK because refs to refs are not allowed
+    SXEA6(sxe_jitson_get_type(jitson) == SXE_JITSON_TYPE_STRING,
+          "Can't get the string value of a %s", sxe_jitson_type_to_str(jitson->type));
+
+    if (len_out)
+        *len_out = sxe_jitson_len(jitson);    // If it's a string_ref, may need to compute the length
+
+    return jitson->type & SXE_JITSON_TYPE_IS_REF ? jitson->reference : jitson->string;
+}
+
+/**
+ * Get the boolen value of a jitson whose type is SXE_JITSON_TYPE_BOOL
+ *
+ * return The bool value; if the jitson is not an boolean, results are undefined
+ */
+bool
+sxe_jitson_get_bool(const struct sxe_jitson *jitson)
+{
+    jitson = sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson;    // OK because refs to refs are not allowed
+    SXEA6(sxe_jitson_get_type(jitson) == SXE_JITSON_TYPE_BOOL,
+          "Can't get the boolean value of a %s", sxe_jitson_type_to_str(jitson->type));
+    return jitson->boolean;
+}
+
+/**
+ * Get a member's value from an object
+ *
+ * @param jitson An object
+ * @param name   The member name
+ * @param len    Length of the member name or 0 if not known
+ *
+ * @return The member's value or NULL on error (ENOMEM) or if the member name was not found (ENOKEY).
+ */
+const struct sxe_jitson *
+sxe_jitson_object_get_member(const struct sxe_jitson *jitson, const char *name, size_t len)
+{
+    volatile struct sxe_jitson *vol_jit;
+    struct sxe_jitson          *member;
+    const struct sxe_jitson    *con_memb;
+    uint32_t                   *bucket, *index;
+    const char                 *memname;
+    size_t                      memlen;
+    unsigned                    i;
+    bool                        is_race, do_lock;
+
+    jitson = sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson;    // OK because refs to refs are not allowed
+    vol_jit = SXE_CAST_NOCONST(volatile struct sxe_jitson *, jitson);
+    SXEA1(sxe_jitson_get_type(jitson) == SXE_JITSON_TYPE_OBJECT, "Can't get a member value from a %s",
+          sxe_jitson_type_to_str(vol_jit->type));
+    len = len ?: strlen(name);    // SonarQube False Positive
+
+    if (vol_jit->len == 0) {    // Empty object
+        errno = ENOKEY;
+        return NULL;
+    }
+
+    if (!(vol_jit->type & SXE_JITSON_TYPE_INDEXED)) {    // If not already, index thread safely
+        if ((do_lock = !sxe_jitson_is_local(jitson)))
+            SXEA1(pthread_mutex_lock(&type_indexing) == 0, "Can't take indexing lock");
+
+        if (!(is_race = (vol_jit->type & SXE_JITSON_TYPE_INDEXED))) {    // Recheck under the lock in case of a race
+            /* Allocate an array of len buckets + 1 to store the size in jitsons
+            */
+            if (!(index = MOCKERROR(MOCK_FAIL_OBJECT_GET_MEMBER, NULL, ENOMEM,
+                                    kit_calloc(1, (vol_jit->len + 1) * sizeof(uint32_t))))) {
+                if (do_lock)
+                    pthread_mutex_unlock(&type_indexing);
+                return NULL;
+            }
+
+            for (member = SXE_CAST(struct sxe_jitson *, vol_jit + 1), i = 0; i < vol_jit->len; i++) {
+                // Only time it's safe to use vol_memb->len to get the length of the member name (if it's not a reference)
+                memlen       = member->type & SXE_JITSON_TYPE_IS_REF ? strlen(member->reference) : member->len;    // SonarQube False Positive
+                bucket       = &index[sxe_hash_sum(sxe_jitson_get_string(member, NULL), memlen) % vol_jit->len];
+                member->link = *bucket;
+                *bucket      = (uint32_t)(member - vol_jit);
+                member       = member + sxe_jitson_size(member);    // Skip the member name
+                member       = member + sxe_jitson_size(member);    // Skip the member value
+            }
+
+            /* ORDER IS IMPORTANT HERE. Must save vol_jit->integer before overwriting it by setting vol_jit->index.
+             * Must set the SXE_JITSON_TYPE_INDEXED flag last or another thread may use the index before it's there.
+             */
+            index[vol_jit->len] = (uint32_t)vol_jit->integer;    // Store the size at the end
+            vol_jit->index      = index;
+            vol_jit->type      |= SXE_JITSON_TYPE_INDEXED;
+        }
+
+        if (do_lock)
+            pthread_mutex_unlock(&type_indexing);
+
+        if (is_race)
+            SXEL4("Detected a race in just in time object indexing");    /* COVERAGE EXCLUSION: Race condition */
+    }
+
+    for (i = jitson->index[sxe_hash_sum(name, len) % jitson->len]; i != 0; i = con_memb->link) {
+        con_memb = &jitson[i];
+        SXEA6(sxe_jitson_get_type(con_memb) == SXE_JITSON_TYPE_STRING, "Object keys must be strings, not %s",
+              sxe_jitson_type_to_str(con_memb->type));
+        memname = sxe_jitson_get_string(con_memb, &memlen);
+        SXEA6(memname, "A member name should always be a valid string");
+
+        if (memlen == len && memcmp(memname, name, len) == 0)
+            return con_memb + sxe_jitson_size(con_memb);    // Skip the member name, returning the value
+    }
+
+    errno = ENOKEY;
+    return NULL;
+}
+
+/**
+ * Get an element's value from an array or an array-like jitson
+ *
+ * @param jitson An array or array-like jitson
+ * @param idx    The index of the element
+ *
+ * @return The element's value or NULL on error (ENOMEM) or if the index was out of range (ERANGE).
+ *
+ * @note No type checking is done in order to allow this function to be called on array-like types (e.g. ranges)
+ */
+const struct sxe_jitson *
+sxe_jitson_array_get_element(const struct sxe_jitson *jitson, size_t idx)
+{
+    volatile struct sxe_jitson *vol_jit;
+    const struct sxe_jitson    *element;
+    uint32_t                   *index, type;
+    unsigned                    i;
+    bool                        is_race, do_lock;
+
+    vol_jit = SXE_CAST_NOCONST(volatile struct sxe_jitson *, sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson);
+
+    if (idx >= vol_jit->len) {
+        SXEL2("Array element index %zu is not less than len %u", idx, vol_jit->len);
+        errno = ERANGE;
+        return NULL;
+    }
+
+    if ((type = vol_jit->type) & SXE_JITSON_TYPE_IS_UNIF) {
+        SXEA6(vol_jit->uniform.size % sizeof(*jitson) == 0,
+              "The size of a uniform array element must currently be a multiple of a jitson");
+        return SXE_CAST_NOCONST(const struct sxe_jitson *, &vol_jit[1 + (vol_jit->uniform.size / sizeof(*jitson)) * idx]);
+    }
+
+    if (!(type & SXE_JITSON_TYPE_INDEXED)) {    // If not already, index thread safely
+        if ((do_lock = !sxe_jitson_is_local(jitson)))
+            SXEA1(pthread_mutex_lock(&type_indexing) == 0, "Can't take indexing lock");
+
+        if (!(is_race = (vol_jit->type & SXE_JITSON_TYPE_INDEXED))) {    // Recheck under the lock in case of a race
+            /* Allocate an array of len offsets + 1 to store the size in jitsons
+             */
+            if (!(index = MOCKERROR(MOCK_FAIL_ARRAY_GET_ELEMENT, NULL, ENOMEM,
+                                    kit_malloc((vol_jit->len + 1) * sizeof(uint32_t))))) {
+                if (do_lock)
+                    pthread_mutex_unlock(&type_indexing);
+                return NULL;
+            }
+
+            element = SXE_CAST_NOCONST(const struct sxe_jitson *, vol_jit + 1);
+
+            for (i = 0; i < vol_jit->len; i++, element += sxe_jitson_size(element))
+                index[i] = (uint32_t)(element - vol_jit);
+
+            /* ORDER IS IMPORTANT HERE. Must save jitson->integer before overwriting it by setting jitson->index.
+             * Must set the SXE_JITSON_TYPE_INDEXED flag last or another thread may use the index before it's there.
+             */
+            index[vol_jit->len] = (uint32_t)vol_jit->integer;    // Store the size at the end
+            vol_jit->index      = index;
+            vol_jit->type      |= SXE_JITSON_TYPE_INDEXED;
+        }
+
+        if (do_lock)
+            pthread_mutex_unlock(&type_indexing);
+
+        if (is_race)
+            SXEL4("Detected a race in just in time indexing");    /* COVERAGE EXCLUSION: Race condition */
+
+        SXEA1(vol_jit->index, "Index flag is set but there is no index");
+    }
+
+    return SXE_CAST_NOCONST(const struct sxe_jitson *, &vol_jit[vol_jit->index[idx]]);
+}
+
+struct sxe_jitson *
+sxe_jitson_make_null(struct sxe_jitson *jitson)
+{
+    jitson->type = SXE_JITSON_TYPE_NULL;
+    return jitson;
+}
+
+struct sxe_jitson *
+sxe_jitson_make_bool(struct sxe_jitson *jitson, bool boolean)
+{
+    jitson->type    = SXE_JITSON_TYPE_BOOL;
+    jitson->boolean = boolean;
+    return jitson;
+}
+
+struct sxe_jitson *
+sxe_jitson_make_number(struct sxe_jitson *jitson, double number)
+{
+    jitson->type   = SXE_JITSON_TYPE_NUMBER;
+    jitson->number = number;
+    return jitson;
+}
+
+struct sxe_jitson *
+sxe_jitson_make_uint(struct sxe_jitson *jitson, uint64_t uint)
+{
+    jitson->type    = SXE_JITSON_TYPE_NUMBER | SXE_JITSON_TYPE_IS_UINT;
+    jitson->integer = uint;
+    return jitson;
+}
+
+/**
+ * Create a jitson string value that references an immutable C string
+ */
+struct sxe_jitson *
+sxe_jitson_make_string_ref(struct sxe_jitson *jitson, const char *string)
+{
+    jitson->type      = SXE_JITSON_TYPE_STRING | SXE_JITSON_TYPE_IS_REF;
+    jitson->len       = 0;         // The length will be computed if and when needed and cached here if <= 4294967295
+    jitson->reference = string;
+    return jitson;
+}
+
+/**
+ * Create a reference to another jitson that will behave exactly like the original jitson
+ *
+ * @param jitson Pointer to jitson to create
+ * @param to     jitson to refer to
+ *
+ * @note References are only valid during the lifetime of the jitson they refer to
+ */
+struct sxe_jitson *
+sxe_jitson_make_reference(struct sxe_jitson *jitson, const struct sxe_jitson *to)
+{
+    jitson->type   = SXE_JITSON_TYPE_REFERENCE;
+    // Don't create references to references
+    jitson->jitref = (to->type & SXE_JITSON_TYPE_MASK) == SXE_JITSON_TYPE_REFERENCE ? to->jitref : to;
+    return jitson;
+}
+
+/**
+ * Duplicate a jitson value in allocated storage, deep cloning all indices/owned content.
+ *
+ * @param jitson The jitson value to duplicate
+ *
+ * @return The duplicate jitson or NULL on allocation failure
+ */
+struct sxe_jitson *
+sxe_jitson_dup(const struct sxe_jitson *jitson)
+{
+    struct sxe_jitson *dup;
+    size_t             size;
+
+    jitson = sxe_jitson_is_reference(jitson) ? jitson->jitref : jitson;    // OK because refs to refs are not allowed
+    size   = sxe_jitson_size(jitson) * sizeof(*jitson);
+
+    if (!(dup = MOCKERROR(MOCK_FAIL_DUP, NULL, ENOMEM, kit_malloc(size))))
+        return NULL;
+
+    memcpy(dup, jitson, size);
+
+    if (!sxe_jitson_clone(jitson, dup)) {    // If the type requires a deep clone, do it
+        kit_free(dup);
+        return NULL;
+    }
+
+    dup->type |= SXE_JITSON_TYPE_ALLOCED;
+    return dup;
+}
+
+char *
+sxe_jitson_to_json(const struct sxe_jitson *jitson, size_t *len_out)
+{
+    struct sxe_factory factory[1];
+    char              *json;
+
+    SXEE7("(jitson=%p,len_out=%p)", jitson, len_out);
+    sxe_factory_alloc_make(factory, 0, 0);
+    json = sxe_jitson_build_json(jitson, factory) ? sxe_factory_remove(factory, len_out) : NULL;
+    SXER7("return json=%p", json);
+    return json;
+}

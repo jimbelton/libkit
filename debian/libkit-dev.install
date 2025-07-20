@@ -1,0 +1,4 @@
+libkit.a          usr/lib
+include/*.h       usr/include/kit
+libkit.so         usr/lib/x86_64-linux-gnu
+kit-alloc-analyze usr/bin

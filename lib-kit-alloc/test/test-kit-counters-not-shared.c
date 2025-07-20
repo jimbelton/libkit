@@ -21,13 +21,15 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <pthread.h>
+#include <sxe-log.h>
 #include <tap.h>
+#include <pthread.h>
 
 #include "kit-alloc.h"
 #include "kit-counters.h"
-#include "kit-port.h"
+#include "kit-mockfail.h"
 
+kit_counter_t KIT_EARLY;
 kit_counter_t KIT_COUNT;
 
 static void
@@ -40,9 +42,11 @@ static_thread_cleanup(void *v)
 }
 
 static void *
-static_thread(__unused void *v)
+static_thread(void *v)
 {
     static pthread_key_t cleanup_key;
+
+    SXE_UNUSED_PARAMETER(v);
 
     kit_counters_init_thread(1);
 
@@ -65,10 +69,12 @@ dynamic_thread_cleanup(void *v)
 }
 
 static void *
-dynamic_thread(__unused void *v)
+dynamic_thread(void *v)
 {
     static pthread_key_t cleanup_key;
     unsigned slot;
+
+    SXE_UNUSED_PARAMETER(v);
 
     slot = kit_counters_init_dynamic_thread();
 
@@ -85,13 +91,17 @@ int
 main(void)
 {
     pthread_t thr;
-    void *ret;
+    void     *ret;
+    size_t    size;
 
-    plan_tests(7);
-    KIT_ALLOC_SET_LOG(1);
+    plan_tests(10);
 
-    kit_counters_initialize(KIT_COUNTERS_MAX, 2, false);    /* Don't allow shared counters to be used */
-    KIT_COUNT = kit_counter_new("kit.counter");
+    KIT_EARLY = kit_counter_reg("kit.early");
+    kit_counter_incr(KIT_EARLY);
+    is(kit_counter_get(KIT_EARLY), 1, "kit.early works before counters are initialized");
+
+    kit_counters_initialize(KIT_COUNTERS_MAX, 2, false);      // Don't allow shared counters to be used
+    KIT_COUNT = kit_counter_reg("kit.counter");
     ok(kit_counter_isvalid(KIT_COUNT), "Created kit.counter");
     kit_counter_incr(KIT_COUNT);
 
@@ -104,11 +114,26 @@ main(void)
 
     if (ok(pthread_create(&thr, NULL, dynamic_thread, NULL) == 0, "Created a dynamic thread with counters"))
         pthread_join(thr, &ret);
-
     is(kit_counter_get(KIT_COUNT), 9, "Dynamic thread-specific cleanup was able to adjust counters");
-    is(kit_num_counters(), 7, "Number of counters is as expected (1 + 6 memory counters)");
 
-    is(kit_memory_allocations(), 3, "3 allocations for counters");
+    is(kit_num_counters(), 8, "Number of counters is as expected (2 + 6 memory counters)");
+
+    diag("Test memory check function");    // Done here because guards are always on it test-kit-alloc.t
+    {
+        ret            = kit_malloc(32);
+        char *guarded  = kit_memory_check(ret, &size);
+
+#if SXE_DEBUG
+        ok((char *)ret - guarded == 16, "Expected a guard before memory returned by malloc");
+        is(size, 32,                    "Expected the correct size to be set");
+#else
+        is(ret, guarded, "Expected no guards before memory returned by malloc");
+        is(size, 0,      "Expected no size to be set when not checking overflows");
+#endif
+
+        ok(ret = kit_malloc(0), "Zero length allocation returns a valid pointer");
+        kit_free(ret);
+    }
 
     return exit_status();
 }

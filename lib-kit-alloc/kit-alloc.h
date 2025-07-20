@@ -29,7 +29,16 @@
 #include <stdbool.h>
 
 #include "kit-counters.h"
-#include "kit-port.h"
+#include "sxe-log.h"
+
+/*-
+ * The packaged version of jemalloc is built with --enable-fill. You can enable junk filling in your debug builds by defining:
+ *     const char *malloc_conf = KIT_MALLOC_CONF_JUNK_FILL;
+ */
+#define KIT_MALLOC_CONF_JUNK_FILL "junk:true"
+
+#define KIT_MEMORY_ABORT_ON_ENOMEM 0x00000001    // Abort if an allocate call returns ENOMEM (out of memory)
+#define KIT_MEMORY_CHECK_OVERFLOWS 0x00000002    // Add guard words around allocations and check them on realloc/free
 
 struct kit_memory_counters {
     kit_counter_t bytes;
@@ -42,20 +51,18 @@ struct kit_memory_counters {
 
 extern struct kit_memory_counters kit_memory_counters;
 extern size_t                     kit_memory_max_allocated;
+extern int                        kit_memory_diagnostics;      // Set > 0 to turn on kit memory log messages if in debug mode
 
-#define KIT_COUNTER_MEMORY_BYTES     (kit_memory_counters.bytes)
-#define KIT_COUNTER_MEMORY_CALLOC    (kit_memory_counters.calloc)
-#define KIT_COUNTER_MEMORY_FAIL      (kit_memory_counters.fail)
-#define KIT_COUNTER_MEMORY_FREE      (kit_memory_counters.free)
-#define KIT_COUNTER_MEMORY_MALLOC    (kit_memory_counters.malloc)
-#define KIT_COUNTER_MEMORY_REALLOC   (kit_memory_counters.realloc)
+#define KIT_COUNTER_MEMORY_BYTES   (kit_memory_counters.bytes)
+#define KIT_COUNTER_MEMORY_CALLOC  (kit_memory_counters.calloc)
+#define KIT_COUNTER_MEMORY_FAIL    (kit_memory_counters.fail)
+#define KIT_COUNTER_MEMORY_FREE    (kit_memory_counters.free)
+#define KIT_COUNTER_MEMORY_MALLOC  (kit_memory_counters.malloc)
+#define KIT_COUNTER_MEMORY_REALLOC (kit_memory_counters.realloc)
 
-#ifdef MAK_DEBUG
-/* Use bin/kit-alloc-analyze to parse kit_alloc_diagnostics lines */
-extern int kit_alloc_diagnostics;
-#define KIT_ALLOC_SET_LOG(n) do { kit_alloc_diagnostics = (n); } while (0)    // Turn kit_alloc log messages on/off in debug
-#define KIT_ALLOC_SOURCE_PROTO , const char *file, int line
-#define KIT_ALLOC_MANGLE(name) name ## _diag
+// Use bin/kit-alloc-analyze to parse kit-alloc diagnostics lines
+
+#define KIT_ALLOC_SET_LOG(n) do { kit_memory_diagnostics = (n); } while (0)    // Turn kit memory log messages on/off in debug
 
 #define kit_malloc(size)       kit_malloc_diag(size, __FILE__, __LINE__)          /* CONVENTION EXCLUSION: these are supposed to look like functions */
 #define kit_memalign(al, size) kit_memalign_diag(al, size, __FILE__, __LINE__)    /* CONVENTION EXCLUSION: these are supposed to look like functions */
@@ -66,38 +73,53 @@ extern int kit_alloc_diagnostics;
 #define kit_free(ptr)          kit_free_diag(ptr, __FILE__, __LINE__)             /* CONVENTION EXCLUSION: these are supposed to look like functions */
 #define kit_strndup(txt, size) kit_strndup_diag(txt, size, __FILE__, __LINE__)    /* CONVENTION EXCLUSION: these are supposed to look like functions */
 
-#else
-#define KIT_ALLOC_SET_LOG(n) do { } while (0)
-#define KIT_ALLOC_SOURCE_PROTO
-#define KIT_ALLOC_MANGLE(name) name
-#define KIT_ALLOC_SUFFIX
-
-extern void *kit_malloc_diag(size_t size, const char *file, int line);
-extern void *kit_memalign_diag(size_t alignment, size_t size, const char *file, int line);
-extern void *kit_realloc_diag(void *ptr, size_t size, const char *file, int line);
-extern void  kit_free_diag(void *ptr, const char *file, int line);
-#endif
-
-extern void kit_memory_initialize(bool assert_on_enomem);
-extern bool kit_memory_is_initialized(void);
+extern void kit_memory_set_flags(unsigned flags);
+extern void kit_memory_set_assert_on_enomem(bool assert_on_enomem);
+extern void kit_memory_initialize(unsigned flags);
 extern size_t kit_allocated_bytes(void);
 extern uint64_t kit_thread_allocated_bytes(void);
-extern __attribute__((malloc)) void *KIT_ALLOC_MANGLE(kit_malloc)(size_t size KIT_ALLOC_SOURCE_PROTO);
-extern __attribute__((malloc)) void *KIT_ALLOC_MANGLE(kit_memalign)(size_t alignment, size_t size KIT_ALLOC_SOURCE_PROTO);
-extern void *KIT_ALLOC_MANGLE(kit_reduce)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO);
-extern __attribute__((malloc)) char *KIT_ALLOC_MANGLE(kit_strdup)(const char *txt KIT_ALLOC_SOURCE_PROTO);
-extern __attribute__((malloc)) void *KIT_ALLOC_MANGLE(kit_calloc)(size_t num, size_t size KIT_ALLOC_SOURCE_PROTO);
-extern void *KIT_ALLOC_MANGLE(kit_realloc)(void *ptr, size_t size KIT_ALLOC_SOURCE_PROTO);
-extern void KIT_ALLOC_MANGLE(kit_free)(void *ptr KIT_ALLOC_SOURCE_PROTO);
-extern __attribute__((malloc)) char *KIT_ALLOC_MANGLE(kit_strndup)(const char *txt, size_t size KIT_ALLOC_SOURCE_PROTO);
 extern uint64_t kit_memory_allocations(void);
+extern void *kit_memory_check(void *ptr, size_t *size_out);
+extern size_t kit_memory_size(size_t size_alloced, size_t alignment_or_0);
+extern __attribute__((malloc)) void *kit_malloc_diag(size_t size, const char *file, int line);
+extern __attribute__((malloc)) void *kit_memalign_diag(size_t alignment, size_t size, const char *file, int line);
+extern void *kit_reduce_diag(void *ptr, size_t size, const char *file, int line);
+extern __attribute__((malloc)) char *kit_strdup_diag(const char *txt , const char *file, int line);
+extern __attribute__((malloc))void *kit_calloc_diag(size_t num, size_t size , const char *file, int line);
+extern void *kit_realloc_diag(void *ptr, size_t size, const char *file, int line);
+extern void  kit_free_diag(void *ptr, const char *file, int line);
+extern __attribute__((malloc)) char *kit_strndup_diag(const char *txt, size_t size , const char *file, int line);
 extern bool kit_memory_log_growth(__printflike(1, 2) int (*printer)(const char *format, ...));
 extern bool kit_memory_log_stats(__printflike(1, 2) int (*printer)(const char *format, ...), const char *options);
 
+/* The following functions are for DPT-2036. Their use should be thoughtful and not just part of a kit alloc pattern.
+ * They should be used in _init and _fini functions, but not in _new and _free.
+ */
+
+static inline void
+kit_free_safe(void **mem_ptr)
+{
+    SXEA6(mem_ptr, "A valid address is required");
+    kit_free(*mem_ptr);
+    *mem_ptr = NULL;
+}
+
+static inline void *
+kit_malloc_safe(const void *mem_ptr, size_t size)
+{
+    SXEL2A6(mem_ptr == NULL, "Internal error: Memory location for allocation is not NULL.");
+    return kit_malloc(size);
+}
+
+static inline void *
+kit_calloc_safe(const void *mem_ptr, size_t num, size_t size)
+{
+    SXEL2A6(mem_ptr == NULL, "Internal error: Memory location for (c)allocation is not NULL.");
+    return kit_calloc(num, size);
+}
+
 /* The following macro is useful for finding allocations and frees in third party libraries that don't use the kit interface
  */
-#ifdef MAK_DEBUG
-
 extern __thread uint64_t kit_thread_allocated_last;
 
 #define kit_memory_probe() do { \
@@ -110,7 +132,5 @@ extern __thread uint64_t kit_thread_allocated_last;
     kit_thread_allocated_last = kit_thread_allocated_bytes(); \
   } \
 } while (0)
-
-#endif
 
 #endif

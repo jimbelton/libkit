@@ -21,11 +21,11 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <mockfail.h>
 #include <stdlib.h>
 #include <tap.h>
 
 #include "kit.h"
+#include "kit-mockfail.h"
 
 static int
 unsigned_cmp(const void *lhs, const void *rhs)
@@ -53,9 +53,12 @@ main(void)
     unsigned  count = 0;
     unsigned  alloc = 7;
     unsigned  value = 2;
+    unsigned *value_ptr;
     bool      match;
 
-    plan_tests(40);
+    plan_tests(72);
+
+    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                    "Did not delete 2 (empty array)");
 
     MOCKFAIL_START_TESTS(1, kit_sortedarray_add);
     ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to add 2 (realloc failed)");
@@ -64,6 +67,11 @@ main(void)
     ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 2 (first element)");
     ok(array,                                                                        "Array was allocated");
     is(count, 1,                                                                     "Array has one element");
+    /* force inaccessible delete */
+    count = 0;
+    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                    "Did not delete 2 (count is zero)");
+    /* reset */
+    count = 1;
     ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to add a second 2");
     value = 3;
     ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 3 (second element)");
@@ -92,9 +100,9 @@ main(void)
        "Failed to add 29 (full)");
 
     is(array[0], 2,  "Element 0 is 2");
-    is(array[0], 2,  "Element 1 is 3");
+    is(array[1], 3,  "Element 1 is 3");
     is(array[2], 5,  "Element 2 is 5");
-    is(array[2], 5,  "Element 3 is 7");
+    is(array[3], 7,  "Element 3 is 7");
     is(array[6], 23, "Element 6 is 23");
 
     is(kit_sortedarray_find(&testclass, array, count, &u[1],  &match), 0, "Correct insertion point for 1");
@@ -118,10 +126,49 @@ main(void)
     ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[7]))  && *g == 7,  "Got 7");
     ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[23])) && *g == 23, "Got 23");
 
+    is(count, 7, "Array now has 7 elements");
+
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[5]), "Deleted 5");
+
+    is(count, 6, "Array now has 6 elements");
+
+    /* Verify ascending order */
+    is(array[0], 2,  "Element 0 is 2");
+    is(array[1], 3,  "Element 1 is 3");
+    is(array[2], 7,  "Element 2 is 7");
+    is(array[3], 13, "Element 3 is 13");
+    is(array[4], 17, "Element 4 is 17");
+    is(array[5], 23, "Element 5 is 23");
+
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[2]),   "Deleted 2");
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[7]),   "Deleted 7");
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[23]),  "Deleted 23");
+    ok(!kit_sortedarray_delete(&testclass, array, &count, &u[23]), "Did not delete 23 (already deleted)");
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[13]),  "Deleted 13");
+
+    is(count, 2, "Array now has 2 elements");
+
+    /* Verify ascending order */
+    is(array[0], 3,  "Element 0 is 3");
+    is(array[1], 17, "Element 1 is 17");
+
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[3]),   "Deleted 3");
+    ok(kit_sortedarray_delete(&testclass, array, &count, &u[17]),  "Deleted 17");
+
+    is(count, 0, "Array now has 0 elements");
+
+    for (value = 0; value < 7; value++)
+        ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value,
+                               KIT_SORTEDARRAY_ALLOW_INSERTS), "Added %d", value);
+    is(count, 7, "Array now has 7 elements");
+
     value = 29;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value,
+    ok(value_ptr = (unsigned *)kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value,
                            KIT_SORTEDARRAY_ALLOW_GROWTH | KIT_SORTEDARRAY_ZERO_COPY), "Added 29 (full, but growth allowed)");
     ok(array[7] != 29, "Zero copy specified, so added array element was not initialized");
+    is(count, 8, "Array now has 8 elements");
+    *value_ptr = 29;
+    ok(array[7] == 29, "Zero copy specified, set to 29");
 
     return exit_status();
 }

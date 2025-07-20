@@ -25,6 +25,7 @@
 #define GRAPHITELOG_H
 
 struct kit_graphitelog_thread {
+    void (*started)(void);
     unsigned counter_slot;
     int fd;
 };

@@ -29,7 +29,7 @@
 int
 main(void)
 {
-    plan_tests(12);
+    plan_tests(15);
 
     struct kit_deviceid deviceid = {
         .bytes = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
@@ -57,6 +57,13 @@ main(void)
     ok(kit_deviceid_cmp(&deviceid,  &deviceid2)        != 0, "Deviceids should not match");
     ok(kit_deviceid_cmp(&deviceid,  &deviceid)         == 0, "Deviceid compare for same pointer");
     ok(kit_deviceid_cmp(&deviceid,  NULL)          != 0, "Deviceid compare for NULL pointer");
+
+    /* Test kit_deviceid_is_null */
+    ok(kit_deviceid_is_null(&kit_deviceid_nil), "kit_deviceid_is_null returns true for nil device ID");
+    ok(!kit_deviceid_is_null(&deviceid), "kit_deviceid_is_null returns false for non-nil device ID");
+
+    struct kit_deviceid deviceid3 = { .bytes = {0} };
+    ok(kit_deviceid_is_null(&deviceid3), "kit_deviceid_is_null returns true for zeroed device ID");
 
     return exit_status();
 }

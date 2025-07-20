@@ -22,9 +22,18 @@
  */
 
 #include <stdbool.h>
+#include <string.h>
+
+#include "kit-bool-proto.h"
 
 static inline const char *
 kit_bool_to_str(bool flag)
 {
     return flag ? "true" : "false";
+}
+
+static inline bool
+kit_bool_from_str(bool *val, const char *txt)
+{
+    return kit_bool_from_strn(val, txt, (unsigned)strlen(txt));
 }

@@ -23,29 +23,33 @@
 
 #ifdef __linux__
 
-#include "kit-fsevent.h"
+#include <errno.h>
+#include <string.h>
 #include <sxe-log.h>
+
+#include "kit-fsevent.h"
 
 void
 kit_fsevent_init(struct kit_fsevent *me)
 {
-    SXEA1((me->fd = inotify_init1(IN_NONBLOCK|IN_CLOEXEC)) != -1, "Couldn't inotify_init()");
+    SXEA1((me->fd = inotify_init1(IN_NONBLOCK|IN_CLOEXEC)) != -1, "Couldn't inotify_init; error '%s'", strerror(errno));
 }
 
 void
 kit_fsevent_fini(struct kit_fsevent *me)
 {
     close(me->fd);
+    me->fd = -1;
 }
 
 int
-kit_fsevent_add_watch(struct kit_fsevent *me, const char *mon, int how)
+kit_fsevent_add_watch(const struct kit_fsevent *me, const char *mon, int how)
 {
     return inotify_add_watch(me->fd, mon, how);
 }
 
 void
-kit_fsevent_rm_watch(struct kit_fsevent *me, int fd)
+kit_fsevent_rm_watch(const struct kit_fsevent *me, int fd)
 {
     inotify_rm_watch(me->fd, fd);
 }
@@ -57,7 +61,7 @@ kit_fsevent_iterator_init(struct kit_fsevent_iterator *me)
 }
 
 kit_fsevent_ev_t *
-kit_fsevent_read(struct kit_fsevent *me, struct kit_fsevent_iterator *iter)
+kit_fsevent_read(const struct kit_fsevent *me, struct kit_fsevent_iterator *iter)
 {
     kit_fsevent_ev_t *ev;
 

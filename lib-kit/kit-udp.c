@@ -28,10 +28,10 @@
 #endif
 #include <netinet/ip.h>
 #include <string.h>
-#include <mock.h>
-#include <sxe-log.h>
 
 #include "kit.h"
+#include "kit-mock.h"
+#include "sxe-log.h"
 
 /**
  * Create a UDP socket and optionally set socket options for extra information
@@ -97,16 +97,17 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
              struct sockaddr *dest_address, socklen_t *dest_address_len,
              unsigned long *delay_in_msec, struct kit_udp_ttltos *ttltos)
 {
-    uint8_t         control[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(int)) * 2 +
-                            CMSG_SPACE(sizeof(struct sockaddr_in6))];  /* SO_TIMESTAMP + IP_TTL + IP_TOS + IP_ORIGDSTADDR */
-    ssize_t         size;
-    struct msghdr   header;
-    struct iovec    io_vector[1];
-    struct cmsghdr *cmsghdr;
-    struct timeval  current;
-    struct timeval *timestamp = NULL;
-    int             rerrno, *valp;
-    bool            dest_addr_found = false;
+    uint8_t               control[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(int)) * 2 +
+                                  CMSG_SPACE(sizeof(struct sockaddr_in6))];  /* SO_TIMESTAMP + IP_TTL + IP_TOS + IP_ORIGDSTADDR */
+    ssize_t               size;
+    struct msghdr         header;
+    struct iovec          io_vector[1];
+    struct cmsghdr       *cmsghdr;
+    struct timeval        current;
+    const struct timeval *timestamp;
+    int                   rerrno;
+    const int            *valp;
+    bool                  dest_addr_found = false;
 
     io_vector[0].iov_base = buffer;
     io_vector[0].iov_len  = buffer_len;
@@ -137,7 +138,7 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
                     SXEL3("UDP message received from fd %d control data includes an SOL_SOCKET cmsg that is not an"    /* COVERAGE EXCLUSION: Can't happen */
                           " SO_TIMESTAMP (got type %d)", fd, cmsghdr->cmsg_type);
                 else if (delay_in_msec) {
-                    timestamp = (struct timeval *)CMSG_DATA(cmsghdr);
+                    timestamp = (const struct timeval *)CMSG_DATA(cmsghdr);
                     SXEA1(gettimeofday(&current, 0) >= 0, "Kernel won't give use the timeofday");
 
                     if (current.tv_sec < timestamp->tv_sec
@@ -155,7 +156,7 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
                 switch (cmsghdr->cmsg_type) {
                 case IP_ORIGDSTADDR:
                     if (dest_address && dest_address_len) {
-                        struct sockaddr *addr = (struct sockaddr *)CMSG_DATA(cmsghdr);
+                        const struct sockaddr *addr = (const struct sockaddr *)CMSG_DATA(cmsghdr);
                         if (addr->sa_family == AF_INET6) {
                             SXEA1(*dest_address_len >= sizeof(struct sockaddr_in6), "Provided dest_address_len < sizeof sockaddr_in6");  /* COVERAGE EXCLUSION: IPv6 testing is hard */
                             *dest_address_len = sizeof(struct sockaddr_in6);  /* COVERAGE EXCLUSION: IPv6 testing is hard */
@@ -172,16 +173,16 @@ kit_recvfrom(int fd, void *buffer, size_t buffer_len, int flags,
 
                 case IP_TTL:
                     if (ttltos) {
-                        valp        = (int *)CMSG_DATA(cmsghdr);    // Required to avoid breaking strict-aliasing rules
-                        ttltos->ttl = *valp;
+                        valp        = (const int *)CMSG_DATA(cmsghdr);    // Required to avoid breaking strict-aliasing rules
+                        ttltos->ttl = (uint8_t)*valp;                     // See ip(7): "it contains a byte"
                     }
 
                     break;
 
                 case IP_TOS:
                     if (ttltos) {
-                        valp        = (int *)CMSG_DATA(cmsghdr);    // Required to avoid breaking strict-aliasing rules
-                        ttltos->tos = *valp;
+                        valp        = (const int *)CMSG_DATA(cmsghdr);    // Required to avoid breaking strict-aliasing rules
+                        ttltos->tos = (uint8_t)*valp;                     // See ip(7): "the time-to-live field of the packet"
                     }
 
                     break;

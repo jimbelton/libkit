@@ -31,6 +31,9 @@
 #endif
 #include <netinet/in.h>
 #include <stdbool.h>
+#include <string.h>
+
+#include "kit-time.h"     // For backward compatibility
 
 #define KIT_UNSIGNED_MAX (~0U)
 
@@ -80,6 +83,12 @@ struct kit_sortedelement_class {
     const char *(*fmt)(const void *);                  // Formatter for element keys; return the LRU of 4 static buffers
 };
 
+static inline const char *
+kit_sortedarray_element_to_str(const struct kit_sortedelement_class *type, const void *array, unsigned pos)
+{
+    return type->fmt((const uint8_t *)array + type->size * pos + type->keyoffset);
+}
+
 struct kit_udp_ttltos {
     uint8_t ttl;
     uint8_t tos;
@@ -98,20 +107,27 @@ typedef void *(*kit_realloc_ptr_t)(void *, size_t);
 extern const struct kit_guid kit_guid_nil;    // The nil GUID (All bytes are 0)
 extern const struct kit_deviceid kit_deviceid_nil;    // The nil DEVICEID (All bytes are 0)
 
+/* Check if a device ID is null (all bytes are zero) */
+static inline bool
+kit_deviceid_is_null(const struct kit_deviceid *deviceid)
+{
+    return memcmp(deviceid, &kit_deviceid_nil, sizeof(struct kit_deviceid)) == 0;
+}
+
+/* Check if a GUID is null (all bytes are zero) */
+static inline bool
+kit_guid_is_null(const struct kit_guid *guid)
+{
+   return memcmp(guid, &kit_guid_nil, sizeof(struct kit_guid)) == 0;
+}
+
 #include "kit-base-encode-proto.h"
 #include "kit-basename-proto.h"
 #include "kit-guid-proto.h"
 #include "kit-deviceid-proto.h"
 #include "kit-hostname-proto.h"
 #include "kit-sortedarray-proto.h"
-#include "kit-time-proto.h"
 #include "kit-strto-proto.h"
 #include "kit-udp-proto.h"
-
-static inline uint32_t
-kit_time_ms(void)
-{
-    return kit_time_nsec() / 1000000ULL;
-}
 
 #endif

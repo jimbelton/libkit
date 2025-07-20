@@ -29,7 +29,7 @@
 int
 main(void)
 {
-    plan_tests(16);
+    plan_tests(19);
 
     struct kit_guid guid = {
         .bytes = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F}
@@ -67,6 +67,13 @@ main(void)
     ok(kit_guid_cmp(&guid,  &guid2)        != 0, "guids should not match");
     ok(kit_guid_cmp(&guid,  &guid)         == 0, "Guid compare for same pointer");
     ok(kit_guid_cmp(&guid,  NULL)          != 0, "Guid compare for NULL pointer");
+
+    /* Test kit_guid_is_null */
+    ok(kit_guid_is_null(&kit_guid_nil), "kit_guid_is_null returns true for nil GUID");
+    ok(!kit_guid_is_null(&guid), "kit_guid_is_null returns false for non-nil GUID");
+
+    struct kit_guid guid3 = { .bytes = {0} };
+    ok(kit_guid_is_null(&guid3), "kit_guid_is_null returns true for zeroed GUID");
 
     return exit_status();
 }

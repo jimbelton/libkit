@@ -21,12 +21,14 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <pthread.h>
 #include <string.h>
 #include <tap.h>
-#include <pthread.h>
 
 #include "kit-alloc.h"
 #include "kit-counters.h"
+#include "kit-time.h"
+#include "sxe-log.h"
 
 #define ERROR ((void *)1)
 
@@ -54,8 +56,7 @@ my_combine_handler(int threadnum)
 }
 
 static void
-mibfn_thispath(kit_counter_t c, const char *subtree, const char *mib, void *v, kit_counters_mib_callback_t cb,
-               __unused int threadnum, unsigned cflags)
+mibfn_thispath(kit_counter_t c, const char *subtree, const char *mib, void *v, kit_counters_mib_callback_t cb, int threadnum, unsigned cflags)
 {
     char buf[100], submib[100];
     size_t submiblen;
@@ -78,38 +79,38 @@ mibfn_thispath(kit_counter_t c, const char *subtree, const char *mib, void *v, k
      * - 'buf' is a local buffer containing the vivified value
      */
 
-    ok(kit_counters_usable(), "%s: kit counters are initialized", __FUNCTION__);
+    SXEA6(kit_counters_usable(), "%s(): Not initialized!", __FUNCTION__);
+    SXE_UNUSED_PARAMETER(threadnum);
 
     if ((submiblen = strlen(mib)) < sizeof(submib) - 16) {
         strcpy(submib, mib);
         strcpy(submib + submiblen++, ".");
 
         strcpy(submib + submiblen, "has.a.value");
-
         if (kit_mibintree(subtree, submib)) {
-            diag("Requested subtree '%s', my mib '%s' - vivify has.a.value", subtree, mib);
+            SXEL7("Requested subtree '%s', my mib '%s' - vivify has.a.value", subtree, mib);
             snprintf(buf, sizeof(buf), "%llu", kit_counter_get(c));
             cb(v, submib, buf);
         }
 
         strcpy(submib + submiblen, "has.some.flags");
         if (kit_mibintree(subtree, submib)) {
-            diag("Requested subtree '%s', my mib '%s' - vivify has.some.flags", subtree, mib);
+            SXEL7("Requested subtree '%s', my mib '%s' - vivify has.some.flags", subtree, mib);
             snprintf(buf, sizeof(buf), "%u", cflags);
             cb(v, submib, buf);
         }
 
         strcpy(submib + submiblen, "is.thread");
         if (kit_mibintree(subtree, submib)) {
-            diag("Requested subtree '%s', my mib '%s' - vivify is.thread", subtree, mib);
+            SXEL7("Requested subtree '%s', my mib '%s' - vivify is.thread", subtree, mib);
             snprintf(buf, sizeof(buf), "%d", threadnum);
             cb(v, submib, buf);
         }
 
         strcpy(submib + submiblen, "has.time");
         if (kit_mibintree(subtree, submib)) {
-            diag("Requested subtree '%s', my mib '%s' - vivify has.time", subtree, mib);
-            snprintf(buf, sizeof(buf), "%" PRIu32, (unsigned)time(NULL));
+            SXEL7("Requested subtree '%s', my mib '%s' - vivify has.time", subtree, mib);
+            snprintf(buf, sizeof(buf), "%" PRIu32, kit_time_sec());
             cb(v, submib, buf);
         }
     }
@@ -157,7 +158,7 @@ counter_callback(void *v, const char *key, const char *val)
     if (strncmp(key, "memory.", sizeof("memory.") - 1) == 0)
         return;
 
-    fail("Unexpected counter_callback key '%s'", key);
+    SXEL3("Unexpected counter_callback key '%s'", key);
     cg->wtf++;
 }
 
@@ -238,29 +239,26 @@ main(void)
     void *thread_retval;
     unsigned i;
 
-    plan_tests(169);
+    plan_tests(157);
 
     /* Initialize counters before memory. test-kit-alloc tests the opposite order
      */
     kit_counters_initialize(KIT_COUNTERS_MAX, 2, true);    // Allow shared counters to be used
-    my.c3 = kit_counter_new("hi.there");
-    ok(kit_counter_isvalid(my.c3), "Created a hi.there counter");
+    my.c3 = kit_counter_reg("hi.there");
+    ok(kit_counter_isvalid(my.c3),                        "Created a hi.there counter");
     kit_counter_incr(my.c3);
-    is(kit_counter_get(my.c3), 1, "Set hi.there => 1");
-    ok(kit_counter_get_data(KIT_COUNTERS_INVALID, -1), "Expect some incrementing of the invalid counter due to early memory calls");
-    kit_counter_zero(KIT_COUNTERS_INVALID);
-
-    kit_memory_initialize(false);    // Call after soft initialization
+    is(kit_counter_get(my.c3), 1,                         "Set hi.there => 1");
+    is(0, kit_counter_get_data(KIT_COUNTERS_INVALID, -1), "Expect no incrementing of the invalid counter");
 
     kit_counter_zero(my.c3);
     is(kit_counter_get(my.c3), 0, "Set hi.there => 0");
 
-    my.c1 = kit_counter_new_with_combine_handler("hello.world", my_combine_handler);
+    my.c1 = kit_counter_reg_with_combine_handler("hello.world", my_combine_handler);
     ok(kit_counter_isvalid(my.c1), "Created a hello.world counter");
-    my.c2 = kit_counter_new("hello.city");
+    my.c2 = kit_counter_reg("hello.city");
     ok(kit_counter_isvalid(my.c2), "Created a hello.city counter");
     ok(kit_counter_isvalid(my.c3), "The hi.there counter is still valid and available");
-    my.c4 = kit_counter_new_with_mibfn("this.path", mibfn_thispath);
+    my.c4 = kit_counter_reg_with_mibfn("this.path", mibfn_thispath);
     ok(kit_counter_isvalid(my.c4), "Created a this.path mibfn counter");
 
     kit_counter_add(my.c4, 999);
@@ -439,8 +437,8 @@ main(void)
         is(kit_counter_get(non_existent_counter), 0, "Nonexistent counter can't be added to");
     }
 
-    ok(kit_counters_usable(),                         "Counters are usable in the main thread");
-    is(kit_num_counters(),                        10, "Number of counters is as expected (4 + 6 memory counters)");
-    is(kit_counter_get_data(KIT_COUNTERS_INVALID, -1), 0,  "The invalid counter has not been touched");
+    ok(kit_counters_usable(),                             "Counters are usable in the main thread");
+    is(kit_num_counters(),                            10, "Number of counters is as expected (4 + 6 memory counters)");
+    is(kit_counter_get_data(KIT_COUNTERS_INVALID, -1), 0, "The invalid counter has not been touched");
     return exit_status();
 }

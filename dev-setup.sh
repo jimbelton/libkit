@@ -18,7 +18,7 @@ FreeBSD)
 
 GNU/Linux)
     export DEBIAN_FRONTEND=noninteractive
-    apt-get -y install libjemalloc-dev
+    apt-get -y install debhelper libbsd-dev libjemalloc-dev libxxhash-dev
     ;;
 
 *)

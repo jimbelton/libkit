@@ -47,7 +47,7 @@ static __thread size_t rs_have;           /* valid bytes at end of rs_buf */
 static __thread size_t rs_count;          /* bytes till reseed */
 
 static inline void
-_rs_init(uint8_t *buf, size_t n)
+_rs_init(const uint8_t *buf, size_t n)
 {
     if (n >= KEYSZ + IVSZ) {
         chacha_keysetup(&rs, buf, KEYSZ * 8, 0);
@@ -56,7 +56,7 @@ _rs_init(uint8_t *buf, size_t n)
 }
 
 static inline void
-_rs_rekey(uint8_t *dat, size_t datlen)
+_rs_rekey(const uint8_t *dat, size_t datlen)
 {
     /* fill rs_buf with the keystream */
     chacha_encrypt_bytes(&rs, rs_buf, rs_buf, RSBUFSZ);
@@ -163,7 +163,7 @@ kit_arc4random_uniform(uint32_t upper_bound)
     SXEA1(upper_bound >= 2, "Invalid upper_bound value %u", upper_bound);
 
     /* 2**32 % x == (2**32 - x) % x */
-    min = -upper_bound % upper_bound;
+    min = (uint32_t)(-(int32_t)upper_bound) % upper_bound;
 
     /*
      * This could theoretically loop forever but each retry has

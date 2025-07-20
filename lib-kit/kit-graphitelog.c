@@ -36,10 +36,11 @@
 #include "kit-safe-rw.h"
 #include "kit-graphitelog.h"
 
-static __thread int graphitelog_fd = -1;
+static __thread int      graphitelog_fd = -1;
 static volatile unsigned graphitelog_json_limit;
-static volatile unsigned graphitelog_interval = 0;
-static volatile bool timetodie = false;
+static volatile unsigned graphitelog_interval;
+static volatile unsigned graphitelog_timeout_ms = -1;
+static volatile bool     timetodie;
 
 struct kit_graphitelog_buffer {
     char buf[INT16_MAX];
@@ -60,7 +61,7 @@ kit_graphitelog_complete(struct kit_graphitelog_buffer *buffer)
             SXEL3("graphitelog buffer overflow - graphite data has been truncated and is invalid");    /* COVERAGE EXCLUSION: Not possible to overflow with current stats */
 
         buffer->json_complete = 1;
-        kit_safe_write(graphitelog_fd, buffer->buf, (size_t)buffer->pos, -1);
+        kit_safe_write(graphitelog_fd, buffer->buf, (size_t)buffer->pos, graphitelog_timeout_ms);
     }
 }
 
@@ -92,63 +93,74 @@ kit_graphitelog_counter_callback(void *v, const char *key, const char *value)
  *
  * @param json_limit  Maximum number of counters in a single json line
  * @param interval    Seconds between outputting counters to the graphite log
+ * @param interval    Milliseconds to wait on poll() while writing for the graphite log
+
  */
 void
-kit_graphitelog_update_set_options(unsigned json_limit, unsigned interval)
+kit_graphitelog_update_set_options(unsigned json_limit, unsigned interval, unsigned timeout_ms)
 {
+    SXEL6("(json_limit=%u,interval=%u, timeout_ms=%u)", json_limit, interval, timeout_ms);
     graphitelog_json_limit = json_limit;
-    graphitelog_interval = interval;
-
+    graphitelog_interval   = interval;
+    graphitelog_timeout_ms = timeout_ms;
 }
 
 /**
  * Launch the graphite logging thread
  *
- * @param arg  Pointer to a struct kit_graphitelog_thread containing the log file
- *             descriptor and counter slot.
+ * @param arg Pointer to a struct kit_graphitelog_thread containing the log file descriptor and counter slot.
  */
 void *
 kit_graphitelog_start_routine(void *arg)
 {
-    struct kit_graphitelog_thread *thr = arg;
-    struct kit_graphitelog_buffer buffer;
-    uint64_t now_usec, sleep_ms;
-    bool bedtime, exittime;
+    uint64_t                             interval_ns, sleep_ns, wall_ns;
+    const struct kit_graphitelog_thread *thr = arg;
+    struct kit_graphitelog_buffer        buffer;
+    struct timespec                      wall_time, delay_time;
 
-    SXEL4("kit_graphitelog_start_routine(): thread started");
+    SXEL4("(): thread started");
     kit_counters_init_thread(thr->counter_slot);
-    graphitelog_fd = thr->fd;
+    if (thr->started)
+        thr->started();
+    delay_time.tv_sec = 0;
+    graphitelog_fd    = thr->fd;
+    sleep_ns          = 0;          // Shut gcc up
     SXEL6("Graphitelog is %s", graphitelog_fd >= 0 ? "enabled" : "disabled");
 
-    for (exittime = false; !exittime; ) {
-        if (timetodie)
-            exittime = true;    /* This will be our last time through! */
-
-        SXEA1(graphitelog_interval, "No configuration acquired; cannot run graphitelog thread");
-        time(&buffer.now);
+    for (;;) {
+        SXEA1(graphitelog_interval,                           "No configuration acquired; cannot run graphitelog thread");
+        SXEA1(clock_gettime(CLOCK_REALTIME, &wall_time) == 0, "Can't get the wall clock time");
+        buffer.now = wall_time.tv_sec;
 
         if (graphitelog_fd >= 0) {
             buffer.counter = 0;
-            kit_counters_mib_text("", &buffer, kit_graphitelog_counter_callback, -1, COUNTER_FLAG_NONE);
+            kit_counters_mib_text("", &buffer, kit_graphitelog_counter_callback, -1, KIT_COUNTERS_FLAG_NONE);
             kit_graphitelog_complete(&buffer);
         }
 
-        for (bedtime = true; !timetodie && bedtime; ) {
-            now_usec = kit_time_nsec() / 1000;
+        while (!timetodie) {
+            interval_ns = graphitelog_interval * 1000000000ULL;
+            SXEA1(clock_gettime(CLOCK_REALTIME, &wall_time) == 0, "Can't get the wall clock time");
+            wall_ns  = wall_time.tv_sec * 1000000000ULL + wall_time.tv_nsec;
+            sleep_ns = interval_ns - (wall_ns + interval_ns / 2) % interval_ns;
 
-            /* Aim to wake up at the next half-interval */
-            sleep_ms = graphitelog_interval * 1000000 -
-                       (now_usec + graphitelog_interval * 500000) % (graphitelog_interval * 1000000);
+            if (sleep_ns < 1000000000ULL)
+                break;
 
-            if (sleep_ms > 1000000)
-                /* Sleep for 3/4 second at a time so that we wake up reasonably quickly when it's time to die */
-                sleep_ms = 750000;
-            else
-                bedtime = false;
-            usleep(sleep_ms);
+            /* Sleep for at most 3/4 second at a time so that we wake up reasonably quickly when it's time to die
+             */
+            delay_time.tv_nsec = 750000000;
+            nanosleep(&delay_time, NULL);
         }
+
+        if (timetodie)
+            break;
+
+        delay_time.tv_nsec = sleep_ns;
+        nanosleep(&delay_time, NULL);
     }
 
+    SXEL4(": thread exiting");
     return NULL;
 }
 
@@ -162,4 +174,3 @@ kit_graphitelog_terminate(void)
 {
     timetodie = true;
 }
-

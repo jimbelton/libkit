@@ -38,8 +38,11 @@
 #include <sys/cdefs.h>
 
 #if SXE_DEBUG
+#define	QUEUE_MACRO_DEBUG_TRACE
 #define	QUEUE_MACRO_DEBUG_TRASH
+#define panic(...) SXEA1(0, __VA_ARGS__)
 #endif
+
 
 /*
  * This file defines four types of data structures: singly-linked lists,
@@ -137,6 +140,13 @@ struct qm_trace {
 #define	TRACEBUF	struct qm_trace trace;
 #define	TRACEBUF_INITIALIZER	{ __LINE__, 0, __FILE__, NULL } ,
 
+#define	QMD_TRACE_INIT(head) do {					\
+	(head)->trace.prevline = 0;					\
+	(head)->trace.prevfile = NULL;					\
+	(head)->trace.lastline = __LINE__;				\
+	(head)->trace.lastfile = __FILE__;				\
+} while (0)
+
 #define	QMD_TRACE_HEAD(head) do {					\
 	(head)->trace.prevline = (head)->trace.lastline;		\
 	(head)->trace.prevfile = (head)->trace.lastfile;		\
@@ -154,6 +164,7 @@ struct qm_trace {
 #else	/* !QUEUE_MACRO_DEBUG_TRACE */
 #define	QMD_TRACE_ELEM(elem)
 #define	QMD_TRACE_HEAD(head)
+#define	QMD_TRACE_INIT(head)
 #define	TRACEBUF
 #define	TRACEBUF_INITIALIZER
 #endif	/* QUEUE_MACRO_DEBUG_TRACE */
@@ -210,7 +221,7 @@ struct {								\
 /*
  * Singly-linked List functions.
  */
-#if (defined(_KERNEL) && defined(INVARIANTS))
+#if (defined(_KERNEL) && defined(INVARIANTS)) || SXE_DEBUG
 #define	QMD_SLIST_CHECK_PREVPTR(prevp, elm) do {			\
 	if (*(prevp) != (elm))						\
 		panic("Bad prevptr *(%p) == %p != %p",			\
@@ -478,7 +489,7 @@ struct {								\
  * List functions.
  */
 
-#if (defined(_KERNEL) && defined(INVARIANTS))
+#if (defined(_KERNEL) && defined(INVARIANTS)) || SXE_DEBUG
 /*
  * QMD_LIST_CHECK_HEAD(LIST_HEAD *head, LIST_ENTRY NAME)
  *
@@ -657,7 +668,7 @@ struct {								\
 /*
  * Tail queue functions.
  */
-#if (defined(_KERNEL) && defined(INVARIANTS))
+#if (defined(_KERNEL) && defined(INVARIANTS)) || SXE_DEBUG
 /*
  * QMD_TAILQ_CHECK_HEAD(TAILQ_HEAD *head, TAILQ_ENTRY NAME)
  *
@@ -768,7 +779,7 @@ struct {								\
 #define	TAILQ_INIT(head) do {						\
 	TAILQ_FIRST((head)) = NULL;					\
 	(head)->tqh_last = &TAILQ_FIRST((head));			\
-	QMD_TRACE_HEAD(head);						\
+	QMD_TRACE_INIT(head);						\
 } while (0)
 
 #define	TAILQ_INSERT_AFTER(head, listelm, elm, field) do {		\

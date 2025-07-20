@@ -1,0 +1,18 @@
+Source: libkit
+Maintainer: cie-eng.dns-platform@cisco.com
+Section: devel
+Priority: optional
+Build-Depends: debhelper (>= 9)
+Standards-Version: 4.7.0.0
+
+Package: libkit-dev
+Section: libdevel
+Architecture: any
+Depends: libkit (= ${binary:Version}), ${misc:Depends}
+Description: Cisco C toolkit library headers
+
+Package: libkit
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Cisco C toolkit shared library

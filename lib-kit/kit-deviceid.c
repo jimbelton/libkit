@@ -21,8 +21,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <string.h>
-
 #include "kit.h"
 #include "sxe-log.h"
 #include "sxe-util.h"
@@ -75,3 +73,4 @@ kit_deviceid_cmp(const struct kit_deviceid *deviceid1, const struct kit_deviceid
 {
     return deviceid1 == NULL ? (deviceid2 == NULL ? 0 : -1) : deviceid2 == NULL ? 1 : memcmp(deviceid1, deviceid2, sizeof(struct kit_deviceid));
 }
+

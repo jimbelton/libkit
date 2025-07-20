@@ -28,7 +28,7 @@
 #include "kit.h"
 #include <sxe-util.h>
 
-#if SXE_DEBUG
+#if SXE_DEBUG || defined MAK_CHECKED
 #include <string.h>
 #endif
 
@@ -268,14 +268,14 @@ decode(uint8_t *out, size_t *olen, const char *in, size_t *ilen, unsigned flags,
     *olen = 0;
     buf = 0;
     while (!done && *ilen < maxilen)
-        switch (c = cfg->txtmap[(int)in[*ilen]]) {
+        switch (c = cfg->txtmap[(uint8_t)in[*ilen]]) {
         case WS:
             if (flags & KIT_BASE_DECODE_SKIP_WHITESPACE) {
                 (*ilen)++;
                 continue;
             }
-            /* FALLTHRU */
 
+            __FALLTHROUGH;
         case IN:
             done = 1;
             break;

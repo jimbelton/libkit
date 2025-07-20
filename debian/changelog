@@ -1,0 +1,143 @@
+libkit (2.8) stable; urgency=low
+  * DPT-3415 - Handle cached timezones with no tzdata
+
+ -- Brian Somers <brsomers@cisco.com>  Tue,  6 May 2025 21:11:42 +0000
+
+libkit (2.7) stable; urgency=low
+  * DPT-3261 - sxe_jitson_stack_push_string_reversed
+  * DPT-1364 - Added new guid, deviceid and strto utility functions
+  * DPT-3307 - Support the SXE_JITSON_TYPE_REVERSED flag
+
+ -- Jim Belton <jabelton@cisco.com>  Mon, 24 Mar 2025 15:21:42 +0000
+
+libkit (2.6) stable; urgency=low
+  * DPT-3232 - Support Intersect operator in WHERE
+
+ -- Jim Belton <jabelton@cisco.com>  Thu, 20 Feb 2025 14:50:42 +0000
+
+libkit (2.5) stable; urgency=low
+  * DPT-3141 - sxe-jitson: yet another unicode bug
+
+ -- Jim Belton <jabelton@cisco.com>  Wed,  8 Jan 2025 12:22:42 +0000
+
+libkit (2.4) stable; urgency=low
+  * DPT-3052 - Further fix to unicode parsing
+  * DPT-3072 - Reduce lock contentions during sxe-jitson object/array indexing
+
+ -- Jim Belton <jabelton@cisco.com>  Tue, 03 Dec 2024 01:03:42 +0000
+
+libkit (2.3) stable; urgency=low
+  * DPT-2866 - Make object indexing thread safe
+  * DPT-2771 - Deprecate support for Debian-10
+  * DPT-3052 - Don't overallocate UTF-8 strings
+
+ -- Jim Belton <jabelton@cisco.com>  Tue, 12 Nov 2024 12:21:42 +0000
+
+libkit (2.2) stable; urgency=low
+  * DPT-2828 - Add a build-number suffix to package names
+  * DPT-2930 - Optimize tensor calculations
+  * DPT-2866 - Try to make indexing thread safe
+
+ -- Brian Somers <brsomers@cisco.com>  Sat,  7 Sep 2024 00:29:42 +0000
+
+libkit (2.1) stable; urgency=low
+  * DPT-2823 - SXE_TIME values are not Y2038 safe
+  * DPT-2833 - Review security hotspots in sonarqube for libkit
+  * DPT-2909 - Dereference operator arguments
+  * THR-4904 - Remove memory allocations from kit_tensor_matmul
+
+ -- Jim Belton <jabelton@cisco.com>  Wed, 18 Jul 2024 17:16:42 +0000
+
+libkit (2.00) stable; urgency=low
+  * DPT-2718 - Combine nonevent-driven libsxe modules into libkit
+  * DPT-2719 - Create a libkit-2.0 debian package build
+  * DPT-2739 - Integrate libkit-2.0 dpkg into opendnscache
+  * DPT-2745 - Core Dump in sxe_jitson_is_reference
+  * DPT-2787 - libkit should build on ubuntu 22.04 and debian 12
+  * DPT-2793 - Build .deb packages that aptly 1.3 supports
+  * DPT-2742 - Changes to allow external casts to use jitson string functions
+  * DPT-2817 - Silence libkit sonarQube noise
+
+ -- Jim Belton <jabelton@cisco.com>  Wed, 03 Jul 2024 01:38:17 +0000
+
+libkit (1.20) stable; urgency=low
+  * DPT-2716 - Clean up code smells
+
+ -- Brian Somers <brsomers@cisco.com>  Thu, 14 Sep 2023 22:10:42 +0000
+
+libkit (1.19) stable; urgency=low
+  * DPT-2479 - Add tensor math operations code into libkit
+
+ -- Dejan Donin <ddonin@cisco.com>  Wed,  8 May 2024 13:40:42 +0000
+
+libkit (1.17) stable; urgency=low
+  * Added iana.org/time-zones tzcode (version 2023c)
+  * DPT-2183 - Build tzcode and a kit-timezone wrapper
+  * DPT-2501 - Add a graphite-thread-started callback
+
+ -- Jim Belton <jabelton@cisco.com>  Mon, 19 Feb 2024 18:36:42 +0000
+
+libkit (1.16) stable; urgency=low
+  * DPT-2266 - New MOCKERROR macro
+
+ -- Sean Mooney <seamoone@cisco.com>  Tue, 19 Dec 2023 22:23:00 +0000
+
+libkit (1.14) stable; urgency=low
+  * DPT-2262 - Allow graphitelog frequency to be changed quickly
+  * DPT-1574 - Graphite log write timeout set to log_timeout_ms
+
+ -- Jim Belton <jabelton@cisco.com>  Tue, 17 Oct 2023 00:14:01 +0000
+
+libkit (1.12) stable; urgency=low
+  * DPT-2245 - Report graphite statistics relative to wall time
+
+ -- Brian Somers <brsomers@cisco.com>  Thu, 14 Sep 2023 22:10:42 +0000
+
+libkit (1.11) stable; urgency=low
+  * DPT-2096 - Make malloc guard bytes work with libssl3
+
+ -- Jim Belton <jabelton@cisco.com>  Tue,  8 Aug 2023 10:35:42 +0000
+
+libkit (1.8) stable; urgency=low
+  * DPT-2004 - Correct an encoding error
+  * DPT-2052 - Introduce ASAN - the address sanitizer
+  * DPT-2046 - kit_memory should support guard words
+  * DPT-2036 - Add additional checks in opendnscache code
+  * DPT-2046 - Disable memory guard words in the debug build
+
+ -- Brian Somers <brsomers@cisco.com>  Fri, 23 Jun 2023 05:08:42 +0000
+
+libkit (1.7) stable; urgency=low
+  * DPT-1946 - Make kit_stub_resolve() more robust
+
+ -- Brian Somers <brsomers@cisco.com>  Tue,  9 May 2023 23:37:42 +0000
+
+libkit (1.6) stable; urgency=low
+  * DPT-1699 - Add kit_bool_from_str()
+
+ -- Brian Somers <brsomers@cisco.com>  Mon, 24 Apr 2023 17:21:42 +0000
+
+libkit (1.5) stable; urgency=low
+  * DPT-1854 - Remove ZEUS artifacts
+
+ -- Brian Somers <brsomers@cisco.com>  Tue,  4 Apr 2023 19:06:42 +0000
+
+libkit (1.4) stable; urgency=low
+  * DPT-1769 - Add support for Ubuntu-22.04
+
+ -- Prashanth Suvarna <psuvarna@cisco.com>  Tue, 28 Mar 2023 03:17:42 +0000
+
+libkit (1.3) stable; urgency=low
+  * DPT-1812 - ok to call kit_memory_allocations before kit_counters_initialize
+
+ -- Jim Belton <jabelton@cisco.com>  Mon, 20 Mar 2023 16:20:42 +0000
+
+libkit (1.2) stable; urgency=low
+  * DPT-1632 - SCR0: Handle hardcoded references to opendns.com
+
+ -- Jake Zhang <jakezhan@cisco.com>  Wed,  1 Mar 2023 22:14:42 +0000
+
+libkit (1.1) stable; urgency=low
+  * DPT-1771 - Fix policy server memory instability in kit-counters
+
+ -- Jim Belton <jabelton@cisco.com>  Fri, 24 Feb 2023 19:39:42 +0000

@@ -21,32 +21,29 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <sxe-util.h>
 #include <string.h>
 #include <tap.h>
 
 #include "kit.h"
+#include "kit-mockfail.h"
+#include "sxe-util.h"
 
 int
-main(int argc, char **argv)
+main(void)
 {
-    const char *dot, *host;
-    unsigned dots;
-
-    SXE_UNUSED_PARAMETER(argc);
-    SXE_UNUSED_PARAMETER(argv);
+    const char *host;
 
     plan_tests(3);
 
+    MOCKFAIL_START_TESTS(1, kit_hostname);
     host = kit_hostname();
-    ok(host, "kit_hostname() returns some name ('%s')", host ?: "NULL");
+    is_eq(host, "Amnesiac", "Hostname is 'Amnesiac' when gethostbyname() fails");
+    MOCKFAIL_END_TESTS();
 
-    host = kit_short_hostname();
-    ok(host, "kit_short_hostname() returns some name ('%s')", host ?: "NULL");
-
-    for (dots = 0; (dot = strchr(host, '.')) != NULL; host = dot + 1, dots++)
-        ;
-    ok(dots < 2, "The short hostname contains less than two dots");
+    kit_time_cached_update();    // Update the cached time
+    host = kit_hostname();
+    ok(host,      "kit_hostname() returns some name ('%s')", host ?: "NULL");
+    isnt_eq(host, "Amnesiac", "Hostname is no longer 'Amnesiac'");
 
     return exit_status();
 }

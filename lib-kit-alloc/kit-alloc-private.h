@@ -26,23 +26,6 @@
 
 #include "kit-alloc.h"
 
-/* Wrapper macros for logging used only in kit-alloc
- */
-#define KIT_ASSERT(con, ...)   do { if (!(con)) (*kit_alloc_assert)(__FILE__,__LINE__,#con,__VA_ARGS__); } while (0)
-
-#ifdef MAK_DEBUG
-#   define KIT_CHECK(con, ...) do { if (!(con)) (*kit_alloc_assert)(__FILE__,__LINE__,#con,__VA_ARGS__); } while (0)
-#   define KIT_TRACE(...)      do { (*kit_alloc_trace)(__FILE__,__LINE__,__VA_ARGS__); } while (0)
-#else
-#   define KIT_CHECK(con, ...) do {} while (0)
-#   define KIT_TRACE(...)      do {} while (0)
-#endif
-
-/* Kit log will plug in functions here when initialized
- */
-extern void (*kit_alloc_assert)(const char * file, int line, const char * con, const char * format, ...);
-extern void (*kit_alloc_trace)( const char * file, int line, const char * format, ...);
-
-extern void kit_memory_init_internal(bool hard);
+void kit_memory_initialize_counters(void);
 
 #endif

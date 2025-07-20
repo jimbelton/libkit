@@ -21,8 +21,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <kit.h>
-#include <kit-safe-rw.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -33,6 +31,8 @@
 #endif
 
 #include "kit-infolog.h"
+#include "kit-safe-rw.h"
+#include "kit-time.h"
 
 #define DELAY_BETWEEN_IDENTICAL_LOG_ENTRIES     1
 #define ALLOWED_BURST_FOR_IDENTICAL_LOG_ENTRIES 10U
@@ -42,20 +42,20 @@ unsigned kit_infolog_flags;
 __printflike(1, 2) int
 kit_infolog_printf(const char *format, ...)
 {
-    static __thread char buf[KIT_INFOLOG_MAX_LINE];
-    static __thread char previous_buf[KIT_INFOLOG_MAX_LINE];
-    static __thread uint32_t last_log_ts = 0U;
-    static __thread unsigned burst_counter = 0U;
+    static __thread char     buf[KIT_INFOLOG_MAX_LINE];
+    static __thread char     previous_buf[KIT_INFOLOG_MAX_LINE];
+    static __thread uint32_t last_log_ts   = 0;
+    static __thread unsigned burst_counter = 0;
     uint32_t now = kit_time_sec();
-    int i, len;
-    va_list ap;
+    int      i, len;
+    va_list  ap;
 
 #ifdef __APPLE__
     pid_t thread_id = syscall(SYS_thread_selfid);
 #elif defined(__FreeBSD__)
     pthread_t thread_id = pthread_self();
 #else /* __linux__ */
-    pid_t thread_id = syscall(SYS_gettid);
+    pid_t thread_id = gettid();
 #endif
 
     len = snprintf(buf, sizeof(buf), "%ld ", (long)thread_id);

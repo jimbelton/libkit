@@ -21,17 +21,22 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <errno.h>
-#include <stdarg.h>
 #include <string.h>
 #include <tap.h>
 
 #include "kit-alloc.h"
 #include "kit-mockfail.h"
+#include "kit-test.h"        // To enable junk filling when build with SXE_DEBUG == 1
+#include "sxe-util.h"
+
+unsigned long long initial_mallocs = ~0UL;
 
 static void
 check_counters(const char *why, int m, int c, int r, int f, int fail)
 {
+    initial_mallocs = initial_mallocs == ~0ULL ? kit_counter_get(KIT_COUNTER_MEMORY_MALLOC) : initial_mallocs;
+    m              += initial_mallocs;
+
     is(kit_counter_get(KIT_COUNTER_MEMORY_MALLOC), m, "%s, the KIT_COUNTER_MEMORY_MALLOC value is %d", why, m);
     is(kit_counter_get(KIT_COUNTER_MEMORY_CALLOC), c, "%s, the KIT_COUNTER_MEMORY_CALLOC value is %d", why, c);
     is(kit_counter_get(KIT_COUNTER_MEMORY_REALLOC), r, "%s, the KIT_COUNTER_MEMORY_REALLOC value is %d", why, r);
@@ -72,13 +77,10 @@ counter_callback(void *v, const char *key, const char *val)
     for (i = 0; i < sizeof(map) / sizeof(*map); i++)
         if (map[i].key == NULL || strcmp(key, map[i].key) == 0) {
             if (map[i].key == NULL)
-                fail("Unexpected counter_callback key '%s'", key);
-
+                SXEL1("Unexpected counter_callback key '%s'", key);
             *map[i].val = strtoul(val, &end, 0);
-
             if (*end)
                 *map[i].val = 666;
-
             break;
         }
 }
@@ -112,21 +114,24 @@ main(void)
     char *ptr1, *ptr2;
     int failures;
 
-    plan_tests(88);
-    KIT_ALLOC_SET_LOG(1);
+    tap_plan(103, TAP_FLAG_LINE_ON_OK, NULL);
 
-    /* Initialize memory before counters. test-kit-counters tests the opposite order
-     */
-    kit_memory_initialize(false);    // Initialize memory with no aborts; this will call kit_memory_init_internal
-    ok(kit_memory_is_initialized(),               "Memory is initialized");
-    ok(kit_counter_get(KIT_COUNTER_MEMORY_BYTES), "Memory was allocated and tracked before counters were initialized");
-
-    kit_counters_initialize(KIT_COUNTERS_MAX, 1, false);
+    // KIT_ALLOC_SET_LOG(1);    // Turn off when done
+    is(kit_memory_allocations(), 0, "Expected no allocations before initializing counters");
+    kit_memory_set_flags(KIT_MEMORY_CHECK_OVERFLOWS);       // Need overflow checks to ensure coverage
+    kit_counters_initialize(KIT_COUNTERS_MAX, 1, false);    // This calls kit_memory_initialize(~0U)
+    kit_memory_set_assert_on_enomem(true);
+    is(kit_memory_allocations(), 2, "Expected number of allocations for memory counters");
     check_counters("After initializing the counters", 0, 0, 0, 0, 0);
     alloc1  = kit_allocated_bytes();
     talloc1 = kit_thread_allocated_bytes();
 
     ptr1 = kit_malloc(100);
+#if SXE_DEBUG
+    is(*(uint64_t *)ptr1,   0xa5a5a5a5a5a5a5a5ULL, "Malloc junk fills in a debug test");
+#else
+    ok(*(uint64_t *)ptr1 != 0xa5a5a5a5a5a5a5a5ULL, "Malloc doesn't junk fill in a release test");
+#endif
     check_counters("After one malloc", 1, 0, 0, 0, 0);
     alloc2 = kit_allocated_bytes();
     talloc2 = kit_thread_allocated_bytes();
@@ -163,8 +168,10 @@ main(void)
     kit_free(NULL);
     check_counters("After a free(NULL)", 3, 1, 1, 3, 0);
 
+    kit_memory_set_assert_on_enomem(false);    // Failures tested after this point, so don't abort
+
     failures = 0;
-    MOCKFAIL_START_TESTS(1, KIT_ALLOC_MANGLE(kit_reduce));
+    MOCKFAIL_START_TESTS(1, kit_realloc_diag);
     is(kit_reduce(ptr1, 1), ptr1, "When kit_reduce() fails to realloc(), it returns the same pointer");
     failures++;
     MOCKFAIL_END_TESTS();
@@ -182,13 +189,13 @@ main(void)
     memset(&cg, 0xa5, sizeof(cg));
     cg.wtf = 0;
     kit_counters_mib_text("memory", &cg, counter_callback, -1, 0);
-    ok(cg.bytes > 200, "Allocated more than 200 bytes");
-    is(cg.malloc, 4, "Malloc says 4");
-    is(cg.calloc, 1, "Calloc says 1");
-    is(cg.realloc, 1, "Realloc says 1");
-    is(cg.free, 5, "Free says 5");
-    is(cg.fail, failures, "Fail says %d", failures);
-    is(cg.wtf, 0, "WTF says 0");
+    ok(cg.bytes > 200,                        "Allocated more than 200 bytes");
+    is(cg.malloc - initial_mallocs, 4,        "Malloc says 4 more than the initial value");
+    is(cg.calloc,                   1,        "Calloc says 1");
+    is(cg.realloc,                  1,        "Realloc says 1");
+    is(cg.free,                     5,        "Free says 5");
+    is(cg.fail,                     failures, "Fail says %d", failures);
+    is(cg.wtf,                      0,        "WTF says 0");
 
     void *mem = malloc(1);    // CONVENTION EXCLUSION: Force some glibc memory growth
     ok(kit_memory_log_growth(test_printf), "Logged growth in allocated memory");
@@ -202,29 +209,33 @@ main(void)
 
     diag("Test kit-alloc-analyze");
     {
+#if SXE_DEBUG
         KIT_ALLOC_SET_LOG(1);           // Enable kit-alloc logging in debug builds
+#endif
         mem  = kit_memalign(16, 16);
         ptr1 = tap_shell("../../bin/kit-alloc-analyze test-kit-alloc.t.out", NULL);
 
-#ifdef MAK_DEBUG
-        is_strstr(ptr1, "Unmatched allocs:\n", "There was an unmatched allocation");
-        is_strstr(ptr1, "kit_memalign(16,16)", "It was a call to kit_memalign");
+#if SXE_DEBUG
+        is_strncmp(ptr1, "Unmatched allocs:\n", sizeof("Unmatched allocs:\n") - 1, "There was an unmatched allocation");
+        is_strstr( ptr1, "kit_memalign(16,16)",                                    "It was a call to kit_memalign");
 #else
         is_eq(ptr1, "kit_alloc debug logging may not be enabled\n", "kit-alloc-analyze requires a debug build");
         skip(1, "Non debug build");
 #endif
+        free(ptr1);    // CONVENTION EXCLUSION: OK to use in test code
 
         kit_free(mem);
         ptr1 = tap_shell("../../bin/kit-alloc-analyze test-kit-alloc.t.out", NULL);
 
-#ifdef MAK_DEBUG
-        is_strstr(ptr1, "", "There were no unmatched allocations");
+#if SXE_DEBUG
+        is_eq(ptr1, "", "There were no unmatched allocations");
 #else
         is_eq(ptr1, "kit_alloc debug logging may not be enabled\n", "kit-alloc-analyze requires a debug build");
 #endif
+        free(ptr1);    // CONVENTION EXCLUSION: OK to use in test code
     }
 
-    diag("Test zero length allocations and calloc overflows");
+    diag("Test zero length allocations, calloc overflows, and error cases");
     {
         ok(mem = kit_memalign(16, 0),                  "Allocated 0 bytes of aligned memory");
         kit_free(mem);
@@ -234,9 +245,49 @@ main(void)
         kit_free(mem);
         is(kit_calloc(2, 0x8000000000000000ULL), NULL, "Can't allocate 2 * 0x8000000000000000 bytes");
         is(errno, ENOMEM,                              "Errno '%s' is the expected 'Out of memory'", strerror(errno));
+
+        failures = kit_counter_get(KIT_COUNTER_MEMORY_FAIL);
+        MOCKFAIL_START_TESTS(2, kit_malloc_diag);
+        is(kit_malloc(16), NULL, "Test malloc failure");
+        is(kit_counter_get(KIT_COUNTER_MEMORY_FAIL), failures + 1, "Expected the failure count to increase");
+        MOCKFAIL_END_TESTS();
     }
 
-    is(kit_memory_allocations(), 1,                       "No memory has been leaked");    // 1 for all_counters
+    diag("Test memory guards");
+    {
+        ok(ptr1 = kit_memalign(32, 32),                          "Allocated memory at 32 byte alignment");
+        is((uintptr_t)ptr1 & 0x1F, 0,                            "Memory is actually 32 byte aligned");
+        ok(ptr1 - (char *)kit_memory_check(ptr1, &alloc1) == 32, "Expected a double guard before 32 byte aligned memory");
+        is(alloc1, 32,                                           "Expected the correct allocated size to be set");
+
+        ok(ptr2 = kit_realloc(ptr1, 64),                         "Reallocated memory (%s aligned)",
+                                                                 ((uintptr_t)ptr2 & 0x1F) == 0 ? "still" : "no longer");
+        ok(ptr2 - (char *)kit_memory_check(ptr2, &alloc1) == 32, "Expected a double guard before 64 byte reallocated memory");
+        is(alloc1, 64,                                           "Expected the new correct allocated size to be set");
+        kit_free(ptr2);
+    }
+
+    diag("Safe kit functions tests");
+    {
+        mem = NULL;
+        mem = kit_malloc_safe(mem, 32);
+        ok(mem != NULL, "Allocated 32 bytes using safe malloc");
+        kit_free_safe(&mem);
+        ok(mem == NULL, "Free'd 32 bytes using safe free");
+
+        mem = kit_calloc_safe(mem, 32, 2);
+        ok(mem != NULL, "Allocated 64 bytes using safe calloc");
+        kit_free_safe(&mem);
+        ok(mem == NULL, "Free'd 64 bytes using safe free");
+    }
+
+    diag("Test kit_strdup");
+    {
+        ok(mem = kit_strdup("hello, world"), "Duplicated a string");
+        is_eq(mem, "hello, world",           "It's correct");
+        kit_free(mem);
+    }
+
     is(kit_counter_get_data(KIT_COUNTERS_INVALID, -1), 0, "The invalid counter has not been touched");
     return exit_status();
 }
