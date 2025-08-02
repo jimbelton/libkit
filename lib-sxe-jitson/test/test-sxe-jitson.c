@@ -73,13 +73,13 @@ main(void)
     struct sxe_jitson_source source;
     struct sxe_jitson        prim_left, prim_right;
     struct sxe_jitson_stack *stack;
-    struct sxe_jitson       *clone, *jitson;      // Constructed jitson values are returned as non-const
-    const struct sxe_jitson *element, *member;    // Accessed jitson values are returned as const
+    struct sxe_jitson       *array, *clone, *jitson;    // Constructed jitson values are returned as non-const
+    const struct sxe_jitson *element, *member;          // Accessed jitson values are returned as const
     char                    *json_out;
     size_t                   len;
     uint64_t                 start_allocations;
 
-    tap_plan(508 + 5 * 27, TAP_FLAG_LINE_ON_OK, NULL);    // Display test line numbers in OK messages (useful for tracing)
+    tap_plan(518 + 5 * 27, TAP_FLAG_LINE_ON_OK, NULL);    // Display test line numbers in OK messages (useful for tracing)
     start_allocations = kit_memory_allocations();
     // KIT_ALLOC_SET_LOG(1);    // Turn off when done
 
@@ -700,7 +700,6 @@ main(void)
     diag("Test references and cloning a string that's an owned reference");
     {
         struct sxe_jitson  reference[1];
-        struct sxe_jitson *array;
 
         ok(sxe_jitson_stack_open_collection(stack, SXE_JITSON_TYPE_ARRAY),                  "Opened an array on the stack");
         ok(sxe_jitson_stack_add_string(stack, "one",   SXE_JITSON_TYPE_IS_COPY),            "Added a copy of a string");
@@ -1184,6 +1183,22 @@ main(void)
         is(len, 24,                                                                      "Length is 24");
         is(sxe_jitson_get_uint(sxe_jitson_array_get_element(jitson, 1)), 888,            "Got expected guard value");
         sxe_jitson_free(jitson);
+    }
+
+    diag("Tests for DPT-3064 - Concatenate arrays");
+    {
+        ok(array  = sxe_jitson_new("[1, 2]"),                                                "Created array 1");
+        ok(jitson = sxe_jitson_new("[3, 4]"),                                                "Created array 2");
+        ok(sxe_jitson_stack_push_concat_array(stack, array, jitson, SXE_JITSON_TYPE_IS_OWN), "Pushed the concatenation");
+        ok(clone = sxe_jitson_stack_get_jitson(stack),                                       "Got concatenated array from stack");
+        is(sxe_jitson_len(clone), 4,                                                         "It's got 4 elements");
+        is(sxe_jitson_get_uint(sxe_jitson_array_get_element(clone, 0)), 1,                   "Got the correct first element");
+        is(sxe_jitson_get_uint(sxe_jitson_array_get_element(clone, 3)), 4,                   "Got the correct fourth element");
+        is(sxe_jitson_size(clone), 2,                                                        "Concatenations take 2 jitsons");
+        is_eq(json_out = sxe_jitson_to_json(clone, NULL), "[1,2,3,4]",                       "Array is right");
+        is_eq(sxe_jitson_get_type_as_str(*(struct sxe_jitson **)(clone + 1)), "array",       "Memory layout looks correct");
+        kit_free(json_out);
+        sxe_jitson_free(clone);
     }
 
     sxe_jitson_type_fini();

@@ -64,13 +64,19 @@ main(void)
     pthread_t                  thread;
     char                       path[PATH_MAX];
 
-    plan_tests(29);
+    plan_tests(31);
     kit_memory_initialize(KIT_MEMORY_ABORT_ON_ENOMEM | KIT_MEMORY_CHECK_OVERFLOWS);
     uint64_t start_allocations = kit_memory_allocations();    // Clocked the initial # of memory allocations
 //  KIT_ALLOC_SET_LOG(1);
 
     unlink("test_zoneinfo");
     kit_timezone_initialize(1);    // Check for new updates if zoneinfo is older than 1 second
+
+    diag("Verify a invalid timezone can be loaded but not used");
+    {
+        ok(!(local_tz = kit_timezone_load("America/nowhere", sizeof("America/nowhere") - 1)), "Failed to get timezone for nowhere");
+        ok(!kit_timezone_time_to_localtime(local_tz, gm_time, &local_tm), "Unable to get the local time in nowhere");
+    }
 
     diag("Verify that a timezone can be loaded and used");
     {

@@ -254,6 +254,9 @@ kit_timezone_get_name(const struct kit_timezone *me, size_t *len_out)
 struct tm *
 kit_timezone_time_to_localtime(const struct kit_timezone *me, time_t timestamp, struct tm *tm_out)
 {
+    if (!me || !me->tzdata)
+        return NULL;
+
     return tz_localtime_rz(me->tzdata, &timestamp, tm_out);
 }
 

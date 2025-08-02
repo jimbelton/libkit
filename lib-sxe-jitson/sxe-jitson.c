@@ -264,7 +264,14 @@ sxe_jitson_array_get_element(const struct sxe_jitson *jitson, size_t idx)
         return NULL;
     }
 
-    if ((type = vol_jit->type) & SXE_JITSON_TYPE_IS_UNIF) {
+    if ((type = vol_jit->type) & SXE_JITSON_TYPE_IS_REF) {    // If the array is a concatenation of two arrays
+        if (idx < sxe_jitson_len_array((&vol_jit->reference)[0]))
+            return sxe_jitson_array_get_element((&vol_jit->reference)[0], idx);
+        else
+            return sxe_jitson_array_get_element((&vol_jit->reference)[1], idx - sxe_jitson_len_array((&vol_jit->reference)[0]));
+    }
+
+    if (type & SXE_JITSON_TYPE_IS_UNIF) {
         SXEA6(vol_jit->uniform.size % sizeof(*jitson) == 0,
               "The size of a uniform array element must currently be a multiple of a jitson");
         return SXE_CAST_NOCONST(const struct sxe_jitson *, &vol_jit[1 + (vol_jit->uniform.size / sizeof(*jitson)) * idx]);

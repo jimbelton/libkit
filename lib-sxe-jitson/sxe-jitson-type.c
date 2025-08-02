@@ -435,7 +435,9 @@ sxe_jitson_size_indexed(const struct sxe_jitson *jitson)
 uint32_t
 sxe_jitson_array_size(const struct sxe_jitson *jitson)
 {
-    if (jitson->type & SXE_JITSON_TYPE_IS_UNIF)    // Uniform arrays have their element sizes in bytes; round up to jitsons
+    if (jitson->type & SXE_JITSON_TYPE_IS_REF)     // Concatenations are alway 2 jitsons in size
+        return 2;
+    else if (jitson->type & SXE_JITSON_TYPE_IS_UNIF)    // Uniform arrays have their element sizes in bytes; round up to jitsons
         return 1 + jitson->len * ((jitson->uniform.size + sizeof(*jitson) - 1) / sizeof(*jitson));
 
     return sxe_jitson_size_indexed(jitson);
@@ -472,16 +474,22 @@ sxe_jitson_array_free(struct sxe_jitson *jitson)
     unsigned           i;
     uint32_t           offset, size;
 
-    for (i = 0, offset = 1; i < jitson->len; i++, offset += size) {
-        size = sxe_jitson_size(element = jitson + offset);
-        jitson_types[element->type & SXE_JITSON_TYPE_MASK].free(element);
+    if ((jitson->type & SXE_JITSON_TYPE_IS_REF) == 0) {    // If the array is not a concatenation of two arrays
+        for (i = 0, offset = 1; i < jitson->len; i++, offset += size) {
+            size = sxe_jitson_size(element = jitson + offset);
+            jitson_types[element->type & SXE_JITSON_TYPE_MASK].free(element);
+        }
+    } else if (jitson->type & SXE_JITSON_TYPE_IS_OWN) {    // If the array is a concatenation and owns the subarray's storage
+        sxe_jitson_free((&jitson->jitref)[0]);
+        sxe_jitson_free((&jitson->jitref)[1]);
+        jitson->type &= ~SXE_JITSON_TYPE_IS_OWN;    // Remove ownership so free_base won't try to free the first reference
     }
 
     sxe_jitson_free_base(jitson);
 }
 
 /**
- * Determine the size of an array or array-like jitson (e.g. a range)
+ * Clone an array or array-like jitson (e.g. a range)
  *
  * @param jitson An array or array-like jitson
  *

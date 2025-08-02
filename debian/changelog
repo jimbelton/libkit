@@ -1,3 +1,13 @@
+libkit (2.10) stable; urgency=low
+  * DPT-3518 - Handle invalid timezones passed into kit_timezone_time_to_localtime
+
+ -- Sean Mooney <seamoone@cisco.com>  Mon, 14 Jul 2025 05:39:18 +0000
+
+libkit (2.9) stable; urgency=low
+  * DPT-3064 - Support concatenated arrays
+
+ -- Jim Belton <jabelton@cisco.com>  Wed, 18 Jun 2025 14:54:42 +0000
+
 libkit (2.8) stable; urgency=low
   * DPT-3415 - Handle cached timezones with no tzdata
 

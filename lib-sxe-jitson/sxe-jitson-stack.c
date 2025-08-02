@@ -1174,6 +1174,37 @@ sxe_jitson_stack_close_collection(struct sxe_jitson_stack *stack)
     return true;
 }
 
+/**
+ * Push a concatenation of two arrays to the stack.
+ *
+ * @param stack  The jitson stack
+ * @param array1 The first array
+ * @param array2 The second array
+ * @param type   SXE_JITSON_TYPE_REF if contatination refers to two arrays, SXE_JITSON_TYPE_OWN if it owns their storage
+ *
+ * @return true on success, false on out of memory (ENOMEM)
+ */
+bool
+sxe_jitson_stack_push_concat_array(struct sxe_jitson_stack *stack, const struct sxe_jitson *array1,
+                                   const struct sxe_jitson *array2, uint32_t type)
+{
+    unsigned idx;
+
+    SXEA6(sxe_jitson_get_type(array1) == SXE_JITSON_TYPE_ARRAY && sxe_jitson_get_type(array2) == SXE_JITSON_TYPE_ARRAY,
+          "Array arguments must be arrays, not %s and %s", sxe_jitson_get_type_as_str(array1), sxe_jitson_get_type_as_str(array2));
+    SXEA6(type == SXE_JITSON_TYPE_IS_REF || type == SXE_JITSON_TYPE_IS_OWN,
+          "Type must be SXE_JITSON_TYPE_IS_REF or SXE_JITSON_TYPE_IS_OWN, not %"PRIu32, type);
+
+    if ((idx = sxe_jitson_stack_expand(stack, 2)) == SXE_JITSON_STACK_ERROR)
+        return false;    /* COVERAGE EXCLUSION: Out of memory condition */
+
+    stack->jitsons[idx].type            = SXE_JITSON_TYPE_ARRAY | SXE_JITSON_TYPE_IS_REF | type;
+    stack->jitsons[idx].len             = sxe_jitson_len_array(array1) + sxe_jitson_len_array(array2);
+    (&stack->jitsons[idx].reference)[0] = array1;
+    (&stack->jitsons[idx].reference)[1] = array2;
+    return true;
+}
+
 #if SXE_DEBUG
 
 /* Recursively format a possibly partial collection on the stack using a string factory

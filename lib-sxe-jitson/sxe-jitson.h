@@ -60,6 +60,7 @@
 #define SXE_JITSON_TYPE_IS_KEY   0x10000000    // Flag set for types (in JSON, strings) when they are used as keys in an object
 #define SXE_JITSON_TYPE_IS_COPY  0             // Flag passed to API to indicate that strings/member names are to be copied
 #define SXE_JITSON_TYPE_IS_REF   0x20000000    // Flag set for strings that are references (size == 0 until cached or if empty)
+                                               //      and for arrays that are concatenations of two arrays
 #define SXE_JITSON_TYPE_IS_OWN   0x40000000    // Flag set for values where the reference is owned by the object (to be freed)
 #define SXE_JITSON_TYPE_INDEXED  0x40000000    // Flag set for arrays and object if they have been indexed
 #define SXE_JITSON_TYPE_ALLOCED  0x80000000    // Flag set for the first jitson token in an allocated jitson
