@@ -22,10 +22,10 @@
  */
 
 #include "kit-mockfail.h"
+#include "kit-sortedarray.h"
 #include "sxe-jitson-in.h"
 #include "sxe-jitson-intersect.h"
 #include "sxe-jitson-oper.h"
-#include "sxe-sortedarray.h"
 
 unsigned sxe_jitson_oper_intersect      = 0;
 unsigned sxe_jitson_oper_intersect_test = 0;
@@ -114,7 +114,7 @@ close_array_and_get(struct sxe_jitson_stack *stack)
 static const struct sxe_jitson *
 sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct sxe_jitson *right)
 {
-    struct sxe_sortedarray_class elem_type;
+    struct kit_sortedarray_class elem_type;
     struct sxe_jitson_stack     *stack;
     const struct sxe_jitson     *elem_lhs, *elem_rhs, *json = NULL;
     size_t                       i, len_lhs;
@@ -137,7 +137,7 @@ sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct s
         elem_type.keyoffset = 0;
         elem_type.fmt       = NULL;
         elem_type.value     = stack;
-        elem_type.flags     = SXE_SORTEDARRAY_CMP_CAN_FAIL;
+        elem_type.flags     = KIT_SORTEDARRAY_CMP_CAN_FAIL;
 
         /* If both arrays contain uniformly sized elements
             */
@@ -149,7 +149,7 @@ sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct s
             elem_type.cmp   = (int (*)(const void *, const void *))sxe_jitson_cmp;
             elem_type.visit = intersect_add_element;
 
-            if (!sxe_sortedarray_intersect(&elem_type, &left[1], left->len, &right[1], right->len))
+            if (!kit_sortedarray_intersect(&elem_type, &left[1], left->len, &right[1], right->len))
                 goto ERROR_OUT;
 
             goto EARLY_OUT;
@@ -170,7 +170,7 @@ sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct s
             elem_type.cmp   = indexed_element_cmp;
             elem_type.visit = intersect_add_indexed_element;
 
-            if (!sxe_sortedarray_intersect(&elem_type, left->index, left->len, right->index, right->len))
+            if (!kit_sortedarray_intersect(&elem_type, left->index, left->len, right->index, right->len))
                 goto ERROR_OUT;    /* COVERAGE EXCLUSION: Ordered arrays of non-uniform size with incomparable elements */
 
             goto EARLY_OUT;
@@ -259,7 +259,7 @@ intersect_check_element(void *found_out, const void *element)
 static const struct sxe_jitson *
 sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const struct sxe_jitson *right)
 {
-    struct sxe_sortedarray_class elem_type;
+    struct kit_sortedarray_class elem_type;
     const struct sxe_jitson     *elem_lhs, *elem_rhs;
     size_t                       i, len_lhs;
     bool                         found;
@@ -280,7 +280,7 @@ sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const str
         elem_type.fmt       = NULL;
         found               = false;
         elem_type.value     = &found;
-        elem_type.flags     = SXE_SORTEDARRAY_CMP_CAN_FAIL;
+        elem_type.flags     = KIT_SORTEDARRAY_CMP_CAN_FAIL;
 
         /* If both arrays contain uniformly sized elements
          */
@@ -292,7 +292,7 @@ sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const str
             elem_type.cmp   = (int (*)(const void *, const void *))sxe_jitson_cmp;
             elem_type.visit = intersect_check_element;
 
-            if (!sxe_sortedarray_intersect(&elem_type, &left[1], left->len, &right[1], right->len)) {   // Incomplete intersect
+            if (!kit_sortedarray_intersect(&elem_type, &left[1], left->len, &right[1], right->len)) {   // Incomplete intersect
                 if (found)
                     return sxe_jitson_true;
 
@@ -317,7 +317,7 @@ sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const str
             elem_type.cmp   = indexed_element_cmp;
             elem_type.visit = intersect_check_element;
 
-            if (!sxe_sortedarray_intersect(&elem_type, left->index, left->len, right->index, right->len)) {    // Incomplete
+            if (!kit_sortedarray_intersect(&elem_type, left->index, left->len, right->index, right->len)) {    // Incomplete
                 if (found)
                     return sxe_jitson_true;
 

@@ -21,27 +21,24 @@
  * SPDX-License-Identifier: MIT
  */
 
+// This interface is deprecated; please use the updated kit-sortedarray interface instead
+
 #ifndef SXE_SORTEDARRAY_H
 #define SXE_SORTEDARRAY_H
 
-#include <stdbool.h>
+#include "kit-sortedarray.h"
 
-#define SXE_SORTEDARRAY_DEFAULT         0       // No special behaviours
-#define SXE_SORTEDARRAY_ALLOW_INSERTS   0x01    // Elements can be added to a sorted array out of order (expensive!)
-#define SXE_SORTEDARRAY_ALLOW_GROWTH    0x02    // Sorted array is allowed to grow dynamically
-#define SXE_SORTEDARRAY_ZERO_COPY       0x04    // Don't copy the key into the array, just return a pointer to the element
-#define SXE_SORTEDARRAY_CMP_CAN_FAIL    0x08    // Comparing two values can fail, returning INT_MAX
+#define SXE_SORTEDARRAY_DEFAULT       KIT_SORTEDARRAY_DEFAULT
+#define SXE_SORTEDARRAY_ALLOW_INSERTS KIT_SORTEDARRAY_ALLOW_INSERTS
+#define SXE_SORTEDARRAY_ALLOW_GROWTH  KIT_SORTEDARRAY_ALLOW_GROWTH
+#define SXE_SORTEDARRAY_ZERO_COPY     KIT_SORTEDARRAY_ZERO_COPY
+#define SXE_SORTEDARRAY_CMP_CAN_FAIL  KIT_SORTEDARRAY_CMP_CAN_FAIL
 
-struct sxe_sortedarray_class {
-    size_t        size;                                  // Sizeof the element (including padding if not packed)
-    size_t        keyoffset;                             // Offset of the key within the element
-    int         (*cmp)(const void *, const void *);      // Comparitor for element keys
-    const char *(*fmt)(const void *);                    // Formatter for element keys that returns the LRU of 4 static buffers
-    bool        (*visit)(void *, const void *);          // Visitor for matching elements in intersections, false on error
-    void         *value;                                 // Arbitrary value passed as first parameter to visit
-    unsigned      flags;                                 // Flags as defined above
-};
-
-#include "sxe-sortedarray-proto.h"
+#define sxe_sortedarray_class     kit_sortedarray_class
+#define sxe_sortedarray_add       kit_sortedarray_add_element
+#define sxe_sortedarray_delete    kit_sortedarray_delete
+#define sxe_sortedarray_find      kit_sortedarray_find
+#define sxe_sortedarray_get       kit_sortedarray_get
+#define sxe_sortedarray_intersect kit_sortedarray_intersect
 
 #endif

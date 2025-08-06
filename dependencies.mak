@@ -5,8 +5,8 @@ TOP.dir = $(COM.dir)/..
 # This is used by both the package GNUmakefiles and the top level GNUmakefile
 #
 remove_to = $(if $(filter $(1),$(2)),$(call remove_to,$(1),$(wordlist 2,$(words $(2)),$(2))),$(2))
-ALL_LIBRARIES = kit sxe-jitson sxe-dict sxe-cdb sxe-hash sxe-pool sxe-thread sxe-mmap sxe-list kit-alloc sxe-md5 sxe-util \
-                sxe-log kit-mock sxe-test tzcode
+ALL_LIBRARIES = sxe-jitson kit sxe-dict sxe-cdb sxe-hash sxe-pool sxe-thread sxe-mmap sxe-list kit-alloc sxe-md5 sxe-util \
+		sxe-log kit-mock sxe-test tzcode
 LIB_DEPENDENCIES = $(call remove_to,$(LIBRARIES),$(ALL_LIBRARIES))
 
 MAK_VERSION ?= 2    # By default, use the libtap package; set this to 1 to use libtap built in to libsxe
