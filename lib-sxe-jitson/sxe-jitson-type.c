@@ -481,7 +481,7 @@ sxe_jitson_array_free(struct sxe_jitson *jitson)
         }
     } else if (jitson->type & SXE_JITSON_TYPE_IS_OWN) {    // If the array is a concatenation and owns the subarray's storage
         sxe_jitson_free((&jitson->jitref)[0]);
-        sxe_jitson_free((&jitson->jitref)[1]);
+        sxe_jitson_free((&jitson->jitref)[1]);      // SonarQube False Positive
         jitson->type &= ~SXE_JITSON_TYPE_IS_OWN;    // Remove ownership so free_base won't try to free the first reference
     }
 

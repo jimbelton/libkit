@@ -79,7 +79,7 @@ main(void)
     size_t                   len;
     uint64_t                 start_allocations;
 
-    tap_plan(518 + 5 * 27, TAP_FLAG_LINE_ON_OK, NULL);    // Display test line numbers in OK messages (useful for tracing)
+    tap_plan(520 + 5 * 27, TAP_FLAG_LINE_ON_OK, NULL);    // Display test line numbers in OK messages (useful for tracing)
     start_allocations = kit_memory_allocations();
     // KIT_ALLOC_SET_LOG(1);    // Turn off when done
 
@@ -1199,6 +1199,11 @@ main(void)
         is_eq(sxe_jitson_get_type_as_str(*(struct sxe_jitson **)(clone + 1)), "array",       "Memory layout looks correct");
         kit_free(json_out);
         sxe_jitson_free(clone);
+
+        prim_left.type = prim_right.type = SXE_JITSON_TYPE_ARRAY;
+        prim_left.len  = prim_right.len  = ~0;
+        ok(!sxe_jitson_stack_push_concat_array(stack, &prim_left, &prim_right, SXE_JITSON_TYPE_IS_REF), "Overflow error");
+        is(errno, EOVERFLOW,                                                                            "It's EOVERFLOW");
     }
 
     sxe_jitson_type_fini();

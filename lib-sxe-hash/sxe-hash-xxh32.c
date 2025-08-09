@@ -1,4 +1,4 @@
-/* Module that overrides lookup3 with XXH32 hash function. Calling these functions will require the libxxhash DLL.
+/* Module that implements the default XXH32 hash function. Calling these functions will require the libxxhash DLL.
  */
 
 #ifndef SXE_DISABLE_XXHASH
@@ -23,11 +23,9 @@ sxe_hash_xxh32(const void *key, size_t length)
 }
 
 /**
- * Override the default hash sum function (lookup3) with xx32
+ * Override the hash sum function with xxh32
  *
- * @param new_hash_sum Pointer to a function that takes a key and a length and returns an unsigned sum
- *
- * @note If the function is passed 0 as the length, it should use strlen to compute the length of the key
+ * @note This restores the default hash sum function
  */
 void
 sxe_hash_use_xxh32(void)

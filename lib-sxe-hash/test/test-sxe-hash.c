@@ -170,20 +170,36 @@ my_hash_sum(const void *key, size_t length)
 }
 
 static void
+my_hash_128(const void *key, size_t length, uint8_t *hash_out)
+{
+    memset(hash_out, 0, 16);
+    memcpy(hash_out, key, length > 16 ?  16 : length);
+}
+
+static void
 test_hash_override_sum(void)
 {
     unsigned default_sum = sxe_hash_sum("Hello, world.", 0);
+    uint8_t  default_128[16], my_128[16];
 
     sxe_hash_override_sum(my_hash_sum);
     ok(default_sum != sxe_hash_sum("Hello, world.", 0), "After overriding to my_hash_sum, sum is different");
     sxe_hash_use_xxh32();
     is(sxe_hash_sum("Hello, world.", 0), default_sum,   "After setting back to xxh32, sum is the same");
+
+    sxe_hash_128("Hello, world.", 0, default_128);
+    sxe_hash_override_128(my_hash_128);
+    sxe_hash_128("Hello, world.", 0, my_128);
+    ok(memcmp(default_128, my_128, sizeof(default_128)),      "After overriding to my_hash_128, sum is different");
+    sxe_hash_use_xxh128();
+    sxe_hash_128("Hello, world.", 0, my_128);
+    ok(memcmp(default_128, my_128, sizeof(default_128)) == 0, "After setting back to xxh128, sum is the same");
 }
 
 int
 main(void)
 {
-    plan_tests(59);
+    plan_tests(61);
 
     uint64_t start_allocations = kit_memory_allocations();
     // KIT_ALLOC_SET_LOG(1);    // Turn off when done

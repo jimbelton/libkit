@@ -268,7 +268,7 @@ sxe_jitson_array_get_element(const struct sxe_jitson *jitson, size_t idx)
         if (idx < sxe_jitson_len_array((&vol_jit->reference)[0]))
             return sxe_jitson_array_get_element((&vol_jit->reference)[0], idx);
         else
-            return sxe_jitson_array_get_element((&vol_jit->reference)[1], idx - sxe_jitson_len_array((&vol_jit->reference)[0]));
+            return sxe_jitson_array_get_element((&vol_jit->reference)[1], idx - sxe_jitson_len_array((&vol_jit->reference)[0]));    // SonarQube False Positive
     }
 
     if (type & SXE_JITSON_TYPE_IS_UNIF) {

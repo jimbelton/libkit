@@ -57,9 +57,11 @@ typedef struct SXE_HASH {
     unsigned (* hash_key)(const void * key, size_t size);
 } SXE_HASH;
 
-typedef unsigned (*SXE_HASH_FUNC)(const void *, size_t);    // Type signature for a hash function
+typedef unsigned (*SXE_HASH_FUNC)(    const void *, size_t);                // Type signature for a 32 bit hash function
+typedef void     (*SXE_HASH_128_FUNC)(const void *, size_t, uint8_t *);    // Type signature for a 128 bit hash function
 
-extern uint32_t (*sxe_hash_sum)(const void *key, size_t size);
+extern uint32_t (*sxe_hash_sum)(const void *key, size_t length);
+extern void     (*sxe_hash_128)(const void *key, size_t length, uint8_t *hash_out);
 
 #include "lib-sxe-hash-proto.h"
 #endif

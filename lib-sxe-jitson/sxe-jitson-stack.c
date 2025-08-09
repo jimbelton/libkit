@@ -919,13 +919,13 @@ sxe_jitson_stack_push_string_reversed(struct sxe_jitson_stack *stack, const char
 
     /* Length to number of jitson tokens needed: 0-7 -> 1, 8-23 -> 2, 24-39 -> 3, ...
      */
-    idx = sxe_jitson_stack_expand(stack, (len + 2 * SXE_JITSON_TOKEN_SIZE - SXE_JITSON_STRING_SIZE) / SXE_JITSON_TOKEN_SIZE);
+    idx = sxe_jitson_stack_expand(stack, (len + 2 * SXE_JITSON_TOKEN_SIZE - SXE_JITSON_STRING_SIZE) / SXE_JITSON_TOKEN_SIZE);    // SonarQube False Positive
 
     if (idx == SXE_JITSON_STACK_ERROR)
         return false;    /* COVERAGE EXCLUSION: Out of memory condition */
 
     stack->jitsons[idx].type = SXE_JITSON_TYPE_STRING | SXE_JITSON_TYPE_IS_COPY | SXE_JITSON_TYPE_REVERSED;
-    stack->jitsons[idx].len  = len;
+    stack->jitsons[idx].len  = len;    // SonarQube False Positive
 
     for (i = 0; i < len; i++)
         stack->jitsons[idx].string[len - i - 1] = string[i];
@@ -1182,12 +1182,13 @@ sxe_jitson_stack_close_collection(struct sxe_jitson_stack *stack)
  * @param array2 The second array
  * @param type   SXE_JITSON_TYPE_REF if contatination refers to two arrays, SXE_JITSON_TYPE_OWN if it owns their storage
  *
- * @return true on success, false on out of memory (ENOMEM)
+ * @return true on success, false on out of memory (ENOMEM) or if concatenation's length exceeds 4294967295 (EOVERFLOW)
  */
 bool
 sxe_jitson_stack_push_concat_array(struct sxe_jitson_stack *stack, const struct sxe_jitson *array1,
                                    const struct sxe_jitson *array2, uint32_t type)
 {
+    size_t   len;
     unsigned idx;
 
     SXEA6(sxe_jitson_get_type(array1) == SXE_JITSON_TYPE_ARRAY && sxe_jitson_get_type(array2) == SXE_JITSON_TYPE_ARRAY,
@@ -1195,13 +1196,21 @@ sxe_jitson_stack_push_concat_array(struct sxe_jitson_stack *stack, const struct 
     SXEA6(type == SXE_JITSON_TYPE_IS_REF || type == SXE_JITSON_TYPE_IS_OWN,
           "Type must be SXE_JITSON_TYPE_IS_REF or SXE_JITSON_TYPE_IS_OWN, not %"PRIu32, type);
 
+    len = sxe_jitson_len_array(array1) + sxe_jitson_len_array(array2);
+
+    if (len != (uint32_t)len) {
+        SXEL2(": concatenated array len %zu exceeds %u", len, ~0U);
+        errno = EOVERFLOW;
+        return false;
+    }
+
     if ((idx = sxe_jitson_stack_expand(stack, 2)) == SXE_JITSON_STACK_ERROR)
         return false;    /* COVERAGE EXCLUSION: Out of memory condition */
 
     stack->jitsons[idx].type            = SXE_JITSON_TYPE_ARRAY | SXE_JITSON_TYPE_IS_REF | type;
-    stack->jitsons[idx].len             = sxe_jitson_len_array(array1) + sxe_jitson_len_array(array2);
+    stack->jitsons[idx].len             = len;       // SonarQube False Positive
     (&stack->jitsons[idx].reference)[0] = array1;
-    (&stack->jitsons[idx].reference)[1] = array2;
+    (&stack->jitsons[idx].reference)[1] = array2;    // SonarQube False Positive
     return true;
 }
 
