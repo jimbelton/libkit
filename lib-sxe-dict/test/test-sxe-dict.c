@@ -57,9 +57,7 @@ main(void) {
     value_ptr = sxe_dict_add(dic, "HJKL", 4);
     *value_ptr = (const void *)300;
 
-    /* The following is because after doubling to 2, 1 and 2 ended up in bucket 0, but 3 ends up in bucket 1.
-     */
-    is(dic->size, 2, "Size after 3 inserts is 2");
+    is(dic->size, 4, "Size after 3 inserts is 4");
 
     ok((value = sxe_dict_find(dic, "ABC",  3)), "ABC found");
     is(value, 100,                              "It's value is 100");

@@ -4,9 +4,8 @@
 #include "kit-alloc.h"
 #include "kit-mockfail.h"
 #include "sxe-dict.h"
+#include "sxe-hash.h"
 #include "sxe-util.h"
-
-#define hash_func       meiyan
 
 struct sxe_dict_node {
     struct sxe_dict_node *next;
@@ -17,27 +16,6 @@ struct sxe_dict_node {
     size_t                len;
     const void           *value;
 };
-
-static inline uint32_t
-meiyan(const char *key, size_t count)
-{
-    typedef const uint32_t * P;
-    uint32_t h = 0x811c9dc5;
-
-    while (count >= 8) {
-        h = (h ^ ((((*(P)key) << 5) | ((*(P)key) >> 27)) ^ *(P)(key + 4))) * 0xad3e7;
-        count -= 8;
-        key += 8;
-    }
-
-#define tmp h = (h ^ *(const uint16_t *)key) * 0xad3e7; key += 2;
-    if (count & 4) { tmp tmp }
-    if (count & 2) { tmp }
-    if (count & 1) { h = (h ^ *key) * 0xad3e7; }
-#undef tmp
-
-    return h ^ (h >> 16);
-}
 
 struct sxe_dict_node *
 sxe_dict_node_new(const struct sxe_dict *dic, const char *key, size_t len)
@@ -159,7 +137,7 @@ sxe_dict_free(struct sxe_dict *dic)
 static void
 sxe_dict_reinsert_when_resizing(struct sxe_dict *dic, struct sxe_dict_node *k2)
 {
-    int n = hash_func(k2->key, k2->len) % dic->size;
+    unsigned n = sxe_hash_64(k2->key, k2->len) % dic->size;
 
     if (dic->table[n] == 0) {
         dic->table[n] = k2;
@@ -228,7 +206,7 @@ sxe_dict_add(struct sxe_dict *dic, const void *key, size_t len)
         dic->size  = 1;
     }
 
-    unsigned hash   = hash_func(key, len);
+    uint64_t hash   = sxe_hash_64(key, len);
     unsigned bucket = hash % dic->size;
 
     if (dic->table[bucket] != NULL) {
@@ -267,7 +245,7 @@ sxe_dict_find(const struct sxe_dict *dic, const void *key, size_t len)
         return NULL;
 
     len = len ?: strlen(key);
-    unsigned n = hash_func((const char *)key, len) % dic->size;
+    unsigned n = sxe_hash_64((const char *)key, len) % dic->size;
     #if defined(__MINGW32__) || defined(__MINGW64__)
     __builtin_prefetch(gc->table[n]);
     #endif
@@ -307,4 +285,3 @@ sxe_dict_forEach(const struct sxe_dict *dic, sxe_dict_iter f, void *user)
     }
 }
 
-#undef hash_func
