@@ -37,27 +37,32 @@ main(int argc, char **argv)
     struct sxe_dict    dict;
     const void       **value;
     struct timeval     start_time;
-    //struct conf_loader confloader;
-    //FILE              *input;
     char              *end;
-    //struct netaddr    *ips, *next;
     size_t             start_mem;
-    //long               , mask;
     unsigned long      count, i;
     char               name[PATH_MAX];
+    bool               use_hashes = false;
 
     count = sizeof(corpus) / sizeof(corpus[0]);    // Default to preallocation
 
     while (argc > 1) {
         if (strcmp(argv[1], "-c") == 0) {
             assert(argc > 2);
-            argv += 2;
-            argc -= 2;
+            argv += 1;
+            argc -= 1;
             count = strtoul(argv[0], &end, 10);
-        } else {
-            fprintf(stderr, "usage: kit-dict-bench [-c <initial-count>]\nerror: invalid argument '%s'\n", argv[1]);
+        }
+        else if (strcmp(argv[1], "-h") == 0) {
+            assert(argc > 1);
+            use_hashes = true;
+        } 
+        else {
+            fprintf(stderr, "usage: kit-dict-bench [-c <initial-count>] [-h]\nerror: invalid argument '%s'\n", argv[1]);
             exit(1);
         }
+
+        argv += 1;
+        argc -= 1;
     }
 
     for (i = 0; i < sizeof(corpus) / sizeof(corpus[0]); i++) {
@@ -65,22 +70,9 @@ main(int argc, char **argv)
         corpus[i] = strdup(name);
     }
 
-    //start_mem = kit_allocated_bytes();
-    //assert(gettimeofday(&start_time, NULL) == 0);
-
-    //sxe_hash_use_xxh32();
-
-    //char *last_slash = strrchr(argv[0], '/');
-    //assert(last_slash);
-    //assert(sizeof(corpus) >= last_slash - argv[0] + 1 + sizeof(corpus_relative_path));
-    //memcpy(corpus, argv[0], last_slash - argv[0] + 1);
-    //strcpy(&corpus[last_slash - argv[0] + 1], corpus_relative_path);
-
-    //conf_loader_init(&confloader);
-    //assert(conf_loader_open(&confloader, corpus, NULL, NULL, 0, CONF_LOADER_DEFAULT));
     start_mem = kit_allocated_bytes();
     assert(gettimeofday(&start_time, NULL) == 0);
-    sxe_dict_init(&dict, count, 100, 2, SXE_DICT_FLAG_KEYS_NOCOPY);
+    sxe_dict_init(&dict, count, 100, 2, use_hashes ? SXE_DICT_FLAG_KEYS_HASHED : SXE_DICT_FLAG_KEYS_NOCOPY);
     count = sizeof(corpus) / sizeof(corpus[0]);
 
     for (i = 0; i < count; i++) {
@@ -91,47 +83,13 @@ main(int argc, char **argv)
     printf("Construction Duration: %"PRIu64" usec\n", usec_elapsed(&start_time, NULL));
     printf("Memory Allocated: %zu bytes\n", kit_allocated_bytes() - start_mem);
 
-    //struct networks *networks_all = networks_new(&confloader);
-    //assert(networks_all);
+    /* Look all entries up, benchmarking the time
+     */
+    assert(gettimeofday(&start_time, NULL) == 0);
 
+    for (i = 0; i < count; i++)
+        assert(sxe_dict_find(&dict, corpus[i], 0) == (void *)i);
 
-    ///* Get the list of IP addresses, reading them from networks-all
-     //*/
-
-    //assert((input = fopen(corpus_relative_path + 3, "r")));
-    //assert(fgets(buffer, sizeof(buffer), input) != NULL);        // Skip the type/version
-    //assert(fgets(buffer, sizeof(buffer), input) != NULL);        // Read the count line
-    //assert((end   = strchr(buffer, ' ')));
-    //assert((count = strtol(end + 1, NULL, 10)) != LONG_MAX);
-    //assert((ips   = malloc(count * sizeof(*ips))));
-    //assert(fgets(buffer, sizeof(buffer), input) != NULL);        // Skip the section heading
-
-    //for (next = ips, i = 0; i < count; i++) {
-        //assert(fgets(buffer, sizeof(buffer), input) != NULL);
-        //assert((end  = strchr(buffer, '/')));
-        //assert((mask = strtol(end + 1, NULL, 10)) != LONG_MAX);
-
-        //if (mask == 32 && strchr(buffer, '.')) {
-            //assert(netaddr_from_buf(next, buffer, end - buffer, AF_INET));
-            //next++;
-        //}
-        //else if (mask == 128 && strchr(buffer, ':')) {
-            //assert(netaddr_from_buf(next, buffer, end - buffer, AF_INET6));
-            //next++;
-        //}
-    //}
-
-    //count = next - ips;
-    //printf("Looking up %ld IPs\n", count);
-
-    ///* Look them all up, benchmarking the time
-     //*/
-
-    //assert(gettimeofday(&start_time, NULL) == 0);
-
-    //for (i = 0; i < count; i++)
-        //assert(networks_get(networks_all, &ips[i], NULL));
-
-    //printf("Search Duration: %"PRIu64" usec\n", usec_elapsed(&start_time, NULL));
+    printf("Search Duration: %"PRIu64" usec\n", usec_elapsed(&start_time, NULL));
     return 0;
 }

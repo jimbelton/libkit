@@ -2,25 +2,30 @@
 #define SXE_DICT_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 
 #define SXE_DICT_FLAG_KEYS_BINARY 0x00000000    // Keys are exact copies (no NUL termination)
 #define SXE_DICT_FLAG_KEYS_NOCOPY 0x00000001    // Don't copy key values, just save references
-#define SXE_DICT_FLAG_KEYS_STRING 0x00000002    // NUL terminate copies of keys
+#define SXE_DICT_FLAG_KEYS_STRING 0x00000002    // Keys are strings; NUL terminate if copying keys
+#define SXE_DICT_FLAG_KEYS_HASHED 0x00000004    // Keys are stored as 64 bit hash values
 
-#define sxe_dict_delete(dic) sxe_dict_free(dic)    // Deprecated name
+/* DEPRECATED function names; these will be removed in future
+ */
+#define sxe_dict_delete(dic)              sxe_dict_free(dic)
+#define sxe_dict_forEach(dic, visit, obj) sxe_dict_walk((dic),(visit),(obj))
 
 typedef bool (*sxe_dict_iter)(const void *key, size_t key_size, const void **value, void *user);
 
 struct sxe_dict_node;
 
 struct sxe_dict {
-    struct sxe_dict_node **table;    // Pointer to the bucket list or NULL if the dictionary is empty
-    unsigned               flags;    // SXE_DICT_FLAG_*
-    unsigned               size;     // Number of buckets
-    unsigned               count;    // Number of entries
-    unsigned               load;     // Maximum load factor (count/size) as a percentage. 100 -> count == size
-    unsigned               growth;   // Growth factor when load exceeded. 2 is for doubling
+    struct sxe_dict_node **table;       // Pointer to the bucket list or NULL if the dictionary is empty
+    unsigned               flags;       // SXE_DICT_FLAG_*
+    unsigned               size;        // Number of buckets
+    unsigned               count;       // Number of entries
+    unsigned               load;        // Maximum load factor (count/size) as a percentage. 100 -> count == size
+    unsigned               growth;      // Growth factor when load exceeded. 2 is for doubling
 };
 
 static inline unsigned
