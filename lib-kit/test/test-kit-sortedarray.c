@@ -24,12 +24,24 @@
 #include <stdlib.h>
 #include <tap.h>
 
-#include "kit.h"
+#include "kit-alloc.h"
 #include "kit-mockfail.h"
+#include "kit-sortedarray.h"
+#include "sxe-log.h"
+
+struct my_visitor
+{
+    unsigned *array;
+    unsigned  count;
+    unsigned  size;
+};
 
 static int
 unsigned_cmp(const void *lhs, const void *rhs)
 {
+    if (*(const unsigned *)lhs == ~0U)    // If the magic value is passed, return an error
+        return INT_MAX;
+
     return *(const unsigned *)lhs == *(const unsigned *)rhs ? 0 : *(const unsigned *)lhs < *(const unsigned *)rhs ? -1 : 1;
 }
 
@@ -43,61 +55,88 @@ unsigned_fmt(const void *u)
     return string[next];
 }
 
-static const struct kit_sortedelement_class testclass = { sizeof(unsigned), 0, unsigned_cmp, unsigned_fmt};
+static struct kit_sortedarray_class testclass = { sizeof(unsigned), 0, unsigned_cmp, unsigned_fmt, NULL, 0, 0};
 static const unsigned u[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+
+static bool
+my_visit(void *void_visitor, const void *element)
+{
+    struct my_visitor *visitor = void_visitor;
+
+    SXEA1(kit_sortedarray_add_element(&testclass, (void **)&visitor->array, &visitor->count, &visitor->size, element),
+          "Failed to add %u to the intersection", *(const unsigned *)element);
+    SXEL6("Added %u to the intersection", *(const unsigned *)element);
+    return true;
+}
+
+static bool
+my_visit_error(void *visitor, const void *element)
+{
+    SXE_UNUSED_PARAMETER(visitor);
+    SXE_UNUSED_PARAMETER(element);
+
+    if (*(const unsigned *)element == 13) {
+        SXEL2("visit is returning error");
+        return false;
+    }
+
+    return true;
+}
 
 int
 main(void)
 {
     unsigned *array = NULL;
+    unsigned *value_ptr;
     unsigned  count = 0;
     unsigned  alloc = 7;
     unsigned  value = 2;
-    unsigned *value_ptr;
     bool      match;
 
-    plan_tests(72);
+    plan_tests(94);
+    uint64_t start_allocations = kit_memory_allocations();
+//  KIT_ALLOC_SET_LOG(1);    // Turn off when done
 
-    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                    "Did not delete 2 (empty array)");
+    testclass.flags = KIT_SORTEDARRAY_DEFAULT;
+    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                        "Did not delete 2 (empty array)");
 
     MOCKFAIL_START_TESTS(1, kit_sortedarray_add);
-    ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to add 2 (realloc failed)");
+    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add 2 (realloc failed)");
     MOCKFAIL_END_TESTS();
 
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 2 (first element)");
-    ok(array,                                                                        "Array was allocated");
-    is(count, 1,                                                                     "Array has one element");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 2 (first element)");
+    ok(array,                                                                             "Array was allocated");
+    is(count, 1,                                                                          "Array has one element");
     /* force inaccessible delete */
     count = 0;
-    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                    "Did not delete 2 (count is zero)");
+    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                        "Did not delete 2 (count is zero)");
     /* reset */
     count = 1;
-    ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to add a second 2");
+    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add a second 2");
     value = 3;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 3 (second element)");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 3 (second element)");
     value = 1;
-    ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0), "Failed to added 1 out of order");
-    is(count, 2,                                                                     "Array has two elements");
+    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to added 1 out of order");
+    is(count, 2,                                                                          "Array has two elements");
     value = 7;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 7 (third element)");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 7 (third element)");
     value = 13;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 13 (fourth element)");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 13 (fourth element)");
     value = 17;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 17 (fifth element)");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 17 (fifth element)");
     value = 23;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, 0),  "Added 23 (sixth element)");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 23 (sixth element)");
 
+    testclass.flags = KIT_SORTEDARRAY_ALLOW_INSERTS;
     value = 7;
-    ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, KIT_SORTEDARRAY_ALLOW_INSERTS),
-       "Failed to inserted 7 (duplicate element)");
+    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Can't add 7 (duplicate element)");
     value = 5;
-    ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, KIT_SORTEDARRAY_ALLOW_INSERTS),
-       "Inserted 5 (third element)");
-    is(count, 7, "Array now has seven elements");
+    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 5 (third element)");
+    is(count, 7,                                                                          "Array now has seven elements");
 
+    testclass.flags = KIT_SORTEDARRAY_DEFAULT;    // No longer allow insertions
     value = 29;
-    ok(!kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value, KIT_SORTEDARRAY_DEFAULT), \
-       "Failed to add 29 (full)");
+    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add 29 (full)");
 
     is(array[0], 2,  "Element 0 is 2");
     is(array[1], 3,  "Element 1 is 3");
@@ -154,21 +193,101 @@ main(void)
 
     ok(kit_sortedarray_delete(&testclass, array, &count, &u[3]),   "Deleted 3");
     ok(kit_sortedarray_delete(&testclass, array, &count, &u[17]),  "Deleted 17");
+    is(count, 0,                                                   "Array now has 0 elements");
 
-    is(count, 0, "Array now has 0 elements");
+    testclass.flags = KIT_SORTEDARRAY_ALLOW_INSERTS;
 
     for (value = 0; value < 7; value++)
-        ok(kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value,
-                               KIT_SORTEDARRAY_ALLOW_INSERTS), "Added %d", value);
+        ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Added %d", value);
+
     is(count, 7, "Array now has 7 elements");
 
-    value = 29;
-    ok(value_ptr = (unsigned *)kit_sortedarray_add(&testclass, (void **)&array, &count, &alloc, &value,
-                           KIT_SORTEDARRAY_ALLOW_GROWTH | KIT_SORTEDARRAY_ZERO_COPY), "Added 29 (full, but growth allowed)");
+    testclass.flags = KIT_SORTEDARRAY_ALLOW_GROWTH | KIT_SORTEDARRAY_ZERO_COPY;
+    value           = 29;
+    ok(value_ptr = (unsigned *)kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),
+       "Added 29 (full, but growth allowed)");
     ok(array[7] != 29, "Zero copy specified, so added array element was not initialized");
     is(count, 8, "Array now has 8 elements");
     *value_ptr = 29;
     ok(array[7] == 29, "Zero copy specified, set to 29");
+    kit_free(array);
 
+    diag("Test intersection");
+    {
+        struct my_visitor intersection = {NULL, 0, 0};    // Intersections will be constructed here
+        const unsigned    fibonaci[]   = {2, 3, 5, 8, 13, 21, 34, 55, 89};
+        unsigned          mix[9];
+
+        testclass.visit = my_visit;
+        testclass.value = &intersection;
+        testclass.flags = KIT_SORTEDARRAY_ALLOW_GROWTH | KIT_SORTEDARRAY_CMP_CAN_FAIL;
+
+        kit_sortedarray_intersect(&testclass, mix, 0, fibonaci, 9);
+        is(0, intersection.count, "Intersecting an empty array yeilds an empty array");
+
+        mix[0] = 13;
+        kit_sortedarray_intersect(&testclass, mix, 1, fibonaci, 9);
+        is(1, intersection.count,     "Intersecting a single element array yeilds a single element intersection");
+        is(13, intersection.array[0], "And it's the expected element");
+
+        for (count = 0; count < 5; count++)    // Set mix to [1, 2, 3, 4, 5]
+            mix[count] = count + 1;
+
+        intersection.count = 0;    // Empty the intersection array
+        kit_sortedarray_intersect(&testclass, mix, 5, fibonaci, 9);
+        is(3, intersection.count,    "Intersecting a 5 element array yeilds a 3 element intersection");
+        is(2, intersection.array[0], "First element is the expected element");
+        is(3, intersection.array[1], "Second element is the expected element");
+        is(5, intersection.array[2], "Third element is the expected element");
+
+        intersection.count = 0;    // Empty the intersection array
+        mix[0] = 1;
+        mix[1] = 2;
+        mix[2] = 3;
+        kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9);
+        is(2, intersection.count,    "Intersecting [1, 2, 3] yeilds a 2 element intersection");
+        is(2, intersection.array[0], "First element is 2");
+        is(3, intersection.array[1], "Second element is 3");
+
+        intersection.count = 0;    // Empty the intersection array
+        mix[2] = 4;
+        kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9);
+        is(1, intersection.count,    "Intersecting [1, 2, 4] yeilds a 1 element intersection");
+        is(2, intersection.array[0], "The element is 2");
+
+        intersection.count = 0;    // Empty the intersection array
+        mix[1] = 4;
+        mix[2] = 5;
+        kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9);
+        is(1, intersection.count,    "Intersecting [1, 4, 5] yeilds a 1 element intersection");
+        is(5, intersection.array[0], "The element is 5");
+
+        mix[0] = ~0U;
+        ok(!kit_sortedarray_intersect(&testclass, mix, 1, fibonaci, 9), "Intersecting [~0U] is detected as an error");
+        ok(!kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9), "Intersecting [~0U,4,5] is detected as an error");
+
+        mix[0] = 1;
+        mix[1] = ~0U;
+        ok(!kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9), "Intersecting [1,~0U,5] is detected as an error");
+
+        intersection.count = 0;    // Empty the intersection array
+        mix[1] = 2;
+        mix[2] = ~0U;
+        ok(!kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9), "Intersecting [1,2,~0U] is detected as an error");
+
+        testclass.visit = my_visit_error;
+        mix[0] = 13;
+        ok(!kit_sortedarray_intersect(&testclass, mix, 1, fibonaci, 9), "Intersecting [13] with visit error");
+        mix[0] = 1;
+        mix[1] = 13;
+        ok(!kit_sortedarray_intersect(&testclass, mix, 2, fibonaci, 9), "Intersecting [1,13] with visit error");
+        mix[1] = 2;
+        mix[2] = 13;
+        ok(!kit_sortedarray_intersect(&testclass, mix, 3, fibonaci, 9), "Intersecting [1,2,13] with visit error");
+
+        kit_free(intersection.array);
+    }
+
+    is(kit_memory_allocations(), start_allocations, "No memory was leaked");
     return exit_status();
 }

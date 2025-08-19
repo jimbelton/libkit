@@ -23,9 +23,9 @@
 
 #include <string.h>
 
+#include "kit-sortedarray.h"
 #include "sxe-jitson-in.h"
 #include "sxe-jitson-oper.h"
-#include "sxe-sortedarray.h"
 
 unsigned sxe_jitson_oper_in = 0;
 
@@ -47,7 +47,7 @@ compare_value_to_element(const void *void_value, const void *void_element_offset
 const struct sxe_jitson *
 sxe_jitson_in_array(const struct sxe_jitson *left, const struct sxe_jitson *right)
 {
-    struct sxe_sortedarray_class elem_type;
+    struct kit_sortedarray_class elem_type;
     const struct sxe_jitson     *element, *result;
     size_t                       len;
     unsigned                     i;
@@ -71,12 +71,12 @@ sxe_jitson_in_array(const struct sxe_jitson *left, const struct sxe_jitson *righ
 
         elem_type.keyoffset = 0;
         elem_type.fmt       = NULL;
-        elem_type.flags     = SXE_SORTEDARRAY_CMP_CAN_FAIL;
+        elem_type.flags     = KIT_SORTEDARRAY_CMP_CAN_FAIL;
 
         if (right->type & SXE_JITSON_TYPE_IS_UNIF) {    // If array is of uniform elements, it's simple
             elem_type.size = right->uniform.size;
             elem_type.cmp  = (int (*)(const void *, const void *))sxe_jitson_cmp;
-            idx            = sxe_sortedarray_find(&elem_type, &right[1], right->len, left, &match);
+            idx            = kit_sortedarray_find(&elem_type, &right[1], right->len, left, &match);
         }
         else {
             if (!(right->type & SXE_JITSON_TYPE_INDEXED))   // If the array needs indexing
@@ -85,7 +85,7 @@ sxe_jitson_in_array(const struct sxe_jitson *left, const struct sxe_jitson *righ
             array          = right;
             elem_type.size = sizeof(left->index[0]);
             elem_type.cmp  = compare_value_to_element;
-            idx            = sxe_sortedarray_find(&elem_type, array->index, array->len, left, &match);
+            idx            = kit_sortedarray_find(&elem_type, array->index, array->len, left, &match);
         }
 
         if (idx == ~0U)    // Error occurred in find

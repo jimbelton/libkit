@@ -21,30 +21,29 @@
  * SPDX-License-Identifier: MIT
  */
 
-
-#include <kit.h>
-#include <kit-alloc.h>
-#include <kit-mockfail.h>
 #include <stdint.h>
 #include <string.h>
-#include <sxe-log.h>
+
+#include "kit-alloc.h"
+#include "kit-mockfail.h"
+#include "sxe-log.h"
+#include "kit-sortedarray.h"
 
 /**
- * Add an element to a sorted array. If KIT_SORTEDARRAY_ZERO flag is set caller SHOULD assign the returned pointer
- * a value immediately to avoid possible unsorted array.
+ * Add an element to a sorted array with flags
  *
- * @param type    Object definining the type of elements of the array
+ * @param type    Object definining the type of the array
  * @param array   Pointer to the address of the array in malloced storage; *array == NULL to allocate first time
  * @param count   Pointer to the count of array elements
  * @param alloc   Pointer to the number of array slots allocated; used as the initial allocation if *array == NULL
  * @param element Address of the element to insert
- * @param flags   KIT_SORTEDARRAY_DEFAULT or a combination of KIT_SORTEDARRAY_ALLOW_INSERTS | KIT_SORTEDARRAY_ALLOW_GROWTH
- *                                                            | KIT_SORTEDARRAY_ZERO_COPY
+ * @param flags   KIT_SORTEDARRAY_DEFAULT or one or more of KIT_SORTEDARRAY_ALLOW_INSERTS | KIT_SORTEDARRAY_ALLOW_GROWTH
+ *                | KIT_SORTEDARRAY_ZERO_COPY
  *
  * @return Pointer to inserted element (uninitialized if KIT_SORTEDARRAY_ZERO_COPY passed), or NULL on a duplicate or error
  */
 void *
-kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, unsigned *count, unsigned *alloc,
+kit_sortedarray_add(const struct kit_sortedarray_class *type, void **array, unsigned *count, unsigned *alloc,
                     const void *element, unsigned flags)
 {
     unsigned    pos;
@@ -99,7 +98,7 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
     }
 
     slot = (uint8_t *)*array + pos * type->size;
-    SXEL7("Inserting element %s at position %u", kit_sortedarray_element_to_str(type, element, 0), pos);
+    SXEL7("Inserting element %s at position %u", (*type->fmt)((const uint8_t *)element + type->keyoffset), pos);
 
     if (pos < *count)
         memmove(slot + type->size, slot, (*count - pos) * type->size);
@@ -121,6 +120,29 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
 }
 
 /**
+ * Add an element to a sorted array using flags from the kit_sortedarray_class
+ *
+ * @param type    Object definining the type of elements of the array
+ * @param array   Pointer to the address of the array in malloced storage; *array == NULL to allocate first time
+ * @param count   Pointer to the count of array elements
+ * @param alloc   Pointer to the number of array slots allocated; used as the initial allocation if *array == NULL
+ * @param element Address of the element to insert
+ *
+ * @return Pointer to inserted element (uninitialized if type has flag KIT_SORTEDARRAY_ZERO_COPY), or NULL on a duplicate or
+ *         error
+ *
+ * @note Affected by type->flags KIT_SORTEDARRAY_ALLOW_INSERTS, KIT_SORTEDARRAY_ALLOW_GROWTH, and KIT_SORTEDARRAY_ZERO_COPY. If
+ *       KIT_SORTEDARRAY_ZERO_COPY is set caller SHOULD assign the returned pointer a value immediately to avoid a possible
+ *       unsorted array.
+ */
+void *
+kit_sortedarray_add_element(const struct kit_sortedarray_class *type, void **array, unsigned *count, unsigned *alloc,
+                            const void *element)
+{
+    return kit_sortedarray_add(type, array, count, alloc, element, type->flags);
+}
+
+/**
  * Search a sorted array for a key, returning the closest match
  *
  * @param type      Defines the type of the elements
@@ -129,15 +151,15 @@ kit_sortedarray_add(const struct kit_sortedelement_class *type, void **array, un
  * @param key       The key to search for
  * @param match_out Pointer to a bool set to true if there was an exact match and to false otherwise
  *
- * @return Index of the element found on exact match, the index of the first element whose key is greater, or count if there is
- *         no greater element.
+ * @return Index of the element found on exact match, the index of the first element whose key is greater, count if there is
+ *         no greater element, or ~0U if the compare function supports failures and returns one.
  */
 unsigned
-kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *array, unsigned count, const void *key,
+kit_sortedarray_find(const struct kit_sortedarray_class *type, const void *array, unsigned count, const void *key,
                      bool *match_out)
 {
     unsigned i, lim, pos;
-    int cmp;
+    int      cmp;
 
     *match_out = false;
 
@@ -151,26 +173,33 @@ kit_sortedarray_find(const struct kit_sortedelement_class *type, const void *arr
             break;
         }
 
+        if (cmp == INT_MAX && (type->flags & KIT_SORTEDARRAY_CMP_CAN_FAIL)) {
+            SXEL2("(me=?, count=%u, key=?) // return ~0U due to comparison failure", count);
+            return ~0U;
+        }
+
         if (cmp > 0) {
             pos = i + 1;
             lim--;
         }
     }
 
-    SXEA6(pos == count || type->cmp(key, (const uint8_t *)array + type->size * pos + type->keyoffset) <= 0,
-          "Unexpected pos %u looking for %s, landed on %s", pos, (*type->fmt)(key),
-          kit_sortedarray_element_to_str(type, array, pos));
-
-    SXEL7("%s(me=?, count=%u, key=%s) // return %u, val %s, prev %s, next %s", __FUNCTION__, count, (*type->fmt)(key), pos,
-          pos < count     ? kit_sortedarray_element_to_str(type, array, pos)     : "NOT FOUND",
-          pos > 0         ? kit_sortedarray_element_to_str(type, array, pos - 1) : "NONE",
-          pos + 1 < count ? kit_sortedarray_element_to_str(type, array, pos + 1) : "NONE");
+    if (type->fmt) {
+        SXEA6(pos == count || type->cmp(key, (const uint8_t *)array + type->size * pos + type->keyoffset) <= 0,
+              "Unexpected pos %u looking for %s, landed on %s", pos, (*type->fmt)(key),
+              (*type->fmt)((const uint8_t *)array + type->size * pos + type->keyoffset));
+        SXEL7("(me=?, count=%u, key=%s) // return %u, val %s, prev %s, next %s", count, (*type->fmt)(key), pos,
+              pos < count     ? type->fmt((const uint8_t *)array + type->size * pos + type->keyoffset)       : "NOT FOUND",
+              pos > 0         ? type->fmt((const uint8_t *)array + type->size * (pos - 1) + type->keyoffset) : "NONE",
+              pos + 1 < count ? type->fmt((const uint8_t *)array + type->size * (pos + 1) + type->keyoffset) : "NONE");
+    } else
+        SXEL7("(me=?, count=%u, key=?) // return %u", count, pos);
 
     return pos;
 }
 
 const void *
-kit_sortedarray_get(const struct kit_sortedelement_class *class, const void *array, unsigned count, const void *key)
+kit_sortedarray_get(const struct kit_sortedarray_class *class, const void *array, unsigned count, const void *key)
 {
     bool match = false;
 
@@ -178,6 +207,82 @@ kit_sortedarray_get(const struct kit_sortedelement_class *class, const void *arr
     unsigned pos = array ? kit_sortedarray_find(class, array, count, key, &match) : count;
 
     return match ? (const uint8_t *)array + class->size * pos : NULL;
+}
+
+#define SORTEDARRAY_ELEM(type, array, idx) ((const char *)(array) + (idx) * (type)->size)
+#define SORTEDARRAY_KEY( type, array, idx) (SORTEDARRAY_ELEM(type, array, idx) + (type)->keyoffset)
+
+/**
+ * Visit every element of the left array that is in the right array
+ *
+ * @param type        An object defining the type of element in the array, including the visit function
+ * @param left        The left side array
+ * @param left_count  The number of elements in the left side array
+ * @param right       The right side array
+ * @param right_count The number of elements in the right side array
+ *
+ * @return true if the arrays were entirely intersected, false if the intersection was terminated by the type's visit function
+ *         or due to an error
+ */
+bool
+kit_sortedarray_intersect(struct kit_sortedarray_class *type, const void *left, unsigned left_count, const void *right,
+                          unsigned right_count)
+{
+    unsigned idx, median;
+    bool     match;
+
+    if (left_count == 0 || right_count == 0)
+        return true;
+
+    if (left_count == 1) {
+        if (kit_sortedarray_find(type, right, right_count, (const char *)left + type->keyoffset, &match) == ~0U
+         && (type->flags & KIT_SORTEDARRAY_CMP_CAN_FAIL))
+            return false;
+
+        if (match && !type->visit(type->value, left))    // Visit element
+            return false;
+
+        return true;
+    }
+
+    median = left_count / 2;
+
+    if ((idx = kit_sortedarray_find(type, right, right_count, SORTEDARRAY_KEY(type, left, median), &match)) == ~0U
+     && (type->flags & KIT_SORTEDARRAY_CMP_CAN_FAIL))
+            return false;
+
+    if (median > 0 && idx > 0)    // If median is not the 1st element in left and there are elements in right before the match
+        if (!kit_sortedarray_intersect(type, left, median, right, idx))
+            return false;
+
+    if (match) {
+        if (!type->visit(type->value, SORTEDARRAY_ELEM(type, left, median)))    // Visit element
+            return false;
+
+        median++;                                                          // Move past the median in the left array
+        idx++;                                                             // Move past the match in the right array
+
+        if (median == left_count - 1) {    // There's exactly one left element after the (previous) median
+            if (idx < right_count) {       // There's at least one right element after the match
+                if (kit_sortedarray_find(type, SORTEDARRAY_ELEM(type, right, idx), right_count - idx,
+                                         SORTEDARRAY_KEY(type, left, median), &match) == ~0U
+                 && (type->flags & KIT_SORTEDARRAY_CMP_CAN_FAIL))
+                    return false;
+
+                if (match && !type->visit(type->value, SORTEDARRAY_ELEM(type, left, median)))    // Visit element
+                    return false;
+            }
+
+            return true;
+        }
+    } else
+        median++;    // Move past the median in the left array
+
+    if (idx < right_count)
+        return kit_sortedarray_intersect(type, SORTEDARRAY_KEY(type, left, median), left_count - median,
+                                         SORTEDARRAY_KEY(type, right, idx), right_count - idx);
+
+    return true;
 }
 
 /**
@@ -191,7 +296,7 @@ kit_sortedarray_get(const struct kit_sortedelement_class *class, const void *arr
  * @return Boolean value equaling true if the key is found and deleted successfully, false otherwise.
  */
 bool
-kit_sortedarray_delete(const struct kit_sortedelement_class *type, void *array, unsigned *count, const void *key)
+kit_sortedarray_delete(const struct kit_sortedarray_class *type, void *array, unsigned *count, const void *key)
 {
     bool     match;
     unsigned pos;

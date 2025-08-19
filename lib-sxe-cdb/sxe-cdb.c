@@ -20,7 +20,7 @@
  */
 
 #include <sys/mman.h> /* for mremap() */
-#include <string.h> /* for memset() */
+#include <string.h>   /* for memset() */
 
 #include "kit-alloc.h"
 #include "sxe-hash.h"
@@ -112,9 +112,14 @@ sxe_cdb_instance_new_init(
 {
     unsigned cl;
     unsigned si;
-    unsigned sheet_index     = 0;
-    unsigned sheet_index_max = keys_at_start / SXE_CDB_KEYS_PER_SHEET * 2;
-    SXEL6("initializing sheet indexes // sheet_index_max=%u", sheet_index_max);
+    uint16_t sheet_index     = 0;
+    uint16_t sheet_index_max = keys_at_start / SXE_CDB_KEYS_PER_SHEET * 2;
+
+    SXEA1(keys_at_start / SXE_CDB_KEYS_PER_SHEET * 2 <= SXE_CDB_SHEETS_MAX,
+          "With %u keys at start, maximum sheets is %zu, which exceeds the maximum %zu",
+          keys_at_start, keys_at_start / SXE_CDB_KEYS_PER_SHEET * 2, SXE_CDB_SHEETS_MAX);
+    SXEL6("initializing sheet indexes // sheet_index_max=%hu", sheet_index_max);
+
     for (si = 0; si < SXE_CDB_SHEETS_MAX; si++) { /* loop over all sheet indexes */
         cdb_instance->sheets_index[si] = sheet_index;
         sheet_index ++;
@@ -339,6 +344,8 @@ uint64_t /* SXE_CDB_UID; SXE_CDB_UID_NONE means something went wrong and key not
 sxe_cdb_instance_put_val(SXE_CDB_INSTANCE * cdb_instance, const uint8_t * val, uint32_t val_len)
 {
     SXE_CDB_UID uid;
+    unsigned    cell, row_1, row_2, row_1_cell, row_1_used, row_2_cell, row_2_used;
+    uint16_t    sheet_index, sheet;
 
     uid.as_u64.u = SXE_CDB_UID_NONE;
 
@@ -349,6 +356,7 @@ sxe_cdb_instance_put_val(SXE_CDB_INSTANCE * cdb_instance, const uint8_t * val, u
     }
 
     unsigned header_len = 0;
+
     if      ( sxe_cdb_key_len ==                            0                                              ) { SXEL3("WARNING: %s(): unexpected %u=key_len and/or %u=val_len; early out with no append for key #%u", __FUNCTION__, sxe_cdb_key_len, val_len, cdb_instance->sheets_cells_used); goto SXE_EARLY_OUT; }
     else if ((sxe_cdb_key_len <= KEY_HEADER_LEN_1_KEY_LEN_MAX) && (val_len <= KEY_HEADER_LEN_1_VAL_LEN_MAX)) { header_len = 1; }
     else if ((sxe_cdb_key_len <= KEY_HEADER_LEN_3_KEY_LEN_MAX) && (val_len <= KEY_HEADER_LEN_3_VAL_LEN_MAX)) { header_len = 3; }
@@ -356,53 +364,97 @@ sxe_cdb_instance_put_val(SXE_CDB_INSTANCE * cdb_instance, const uint8_t * val, u
     else if ((sxe_cdb_key_len <= KEY_HEADER_LEN_8_KEY_LEN_MAX) && (val_len <= KEY_HEADER_LEN_8_VAL_LEN_MAX)) { header_len = 8; }
     else                                                                                                     { SXEL3("WARNING: %s(): unexpected %u=key_len and/or %u=val_len; early out with no append for key #%u", __FUNCTION__, sxe_cdb_key_len, val_len, cdb_instance->sheets_cells_used); goto SXE_EARLY_OUT; }
 
-SXE_CDB_ADD_RETRY_ROW_SCAN:;
-    uint16_t sheet_index = sxe_cdb_hash.u16[0] % SXE_CDB_SHEETS_MAX;
-    uint16_t sheet       = cdb_instance->sheets_index[sheet_index];
-    SXEA6(sheet < cdb_instance->sheets_size, "ERROR: INTERNAL: %u=sheet < %u=cdb->sheets_size", sheet, cdb_instance->sheets_size);
+    for (;;) {
+        sheet_index = sxe_cdb_hash.u16[0] % SXE_CDB_SHEETS_MAX;
+        sheet       = cdb_instance->sheets_index[sheet_index];
+        SXEA6(sheet < cdb_instance->sheets_size, "ERROR: INTERNAL: %u=sheet < %u=cdb->sheets_size",
+              sheet, cdb_instance->sheets_size);
 
-    unsigned row;
-    unsigned cell;
-    unsigned row_1 = sxe_cdb_hash.u16[1] & (SXE_CDB_ROWS_PER_SHEET - 1);
-    unsigned row_2 = sxe_cdb_hash.u16[2] & (SXE_CDB_ROWS_PER_SHEET - 1);
-    unsigned row_1_cell = SXE_CDB_KEYS_PER_ROW, row_1_used = 0;
-    unsigned row_2_cell = SXE_CDB_KEYS_PER_ROW, row_2_used = 0;
-    for (cell = 0; cell < SXE_CDB_KEYS_PER_ROW; cell ++) {
-        if (cdb_instance->sheets[sheet].row[row_1].hkv_pos.u32[cell]) { row_1_used ++; } else { row_1_cell = SXE_CDB_KEYS_PER_ROW == row_1_cell ? cell : row_1_cell; }
-        if (cdb_instance->sheets[sheet].row[row_2].hkv_pos.u32[cell]) { row_2_used ++; } else { row_2_cell = SXE_CDB_KEYS_PER_ROW == row_2_cell ? cell : row_2_cell; }
-    }
+        row_1      = sxe_cdb_hash.u16[1] & (SXE_CDB_ROWS_PER_SHEET - 1);
+        row_2      = sxe_cdb_hash.u16[2] & (SXE_CDB_ROWS_PER_SHEET - 1);
+        row_1_cell = SXE_CDB_KEYS_PER_ROW;
+        row_2_cell = SXE_CDB_KEYS_PER_ROW;
+        row_1_used = 0;
+        row_2_used = 0;
 
-    if ((SXE_CDB_KEYS_PER_ROW == row_1_used)
-    &&  (SXE_CDB_KEYS_PER_ROW == row_2_used)) { /* if both sheet rows full */
-        if (cdb_instance->sheets_size >= SXE_CDB_SHEETS_MAX) { SXEL3("WARNING: %s(): cannot split at maximum sheet; early out with no append for key #%u", __FUNCTION__, cdb_instance->sheets_cells_used); goto SXE_EARLY_OUT; }
-        sxe_cdb_instance_split_sheet(cdb_instance, sheet);
-        goto SXE_CDB_ADD_RETRY_ROW_SCAN;
+        for (cell = 0; cell < SXE_CDB_KEYS_PER_ROW; cell ++) {
+            if (cdb_instance->sheets[sheet].row[row_1].hkv_pos.u32[cell]) { row_1_used ++; } else { row_1_cell = SXE_CDB_KEYS_PER_ROW == row_1_cell ? cell : row_1_cell; }
+            if (cdb_instance->sheets[sheet].row[row_2].hkv_pos.u32[cell]) { row_2_used ++; } else { row_2_cell = SXE_CDB_KEYS_PER_ROW == row_2_cell ? cell : row_2_cell; }
+        }
+
+        if (SXE_CDB_KEYS_PER_ROW == row_1_used && SXE_CDB_KEYS_PER_ROW == row_2_used) {    // if both sheet rows full
+            if (cdb_instance->sheets_size >= SXE_CDB_SHEETS_MAX) {
+                SXEL3("WARNING: %s(): cannot split at maximum sheet; early out with no append for key #%u", __FUNCTION__,    /* COVERAGE EXCLUSION: untested error case */
+                      cdb_instance->sheets_cells_used);
+                goto SXE_EARLY_OUT;    /* COVERAGE EXCLUSION: untested error case */
+            }
+
+            sxe_cdb_instance_split_sheet(cdb_instance, sheet);
+            continue;
+        }
+
+        break;
     }
 
     cell = row_1_used < row_2_used ? row_1_cell : row_2_cell; /* last free cell on row to use */
-    row  = row_1_used < row_2_used ? row_1      : row_2     ; /*                   row to use */
+    unsigned row  = row_1_used < row_2_used ? row_1      : row_2     ; /*                   row to use */
 
     uint32_t k              =                             cdb_instance->kvdata_used;
     uint64_t key_bytes_free = cdb_instance->kvdata_size - cdb_instance->kvdata_used;
     uint64_t key_bytes_want = header_len + sxe_cdb_key_len + val_len;
 
     if (key_bytes_want > key_bytes_free) { /* come here to mremap() more key space! */
-        uint32_t want_size_rounded_to_kernel_pages = (((key_bytes_want + (SXE_CDB_KERNEL_PAGE_BYTES - 1)) / SXE_CDB_KERNEL_PAGE_BYTES) * SXE_CDB_KERNEL_PAGE_BYTES) + SXE_CDB_KERNEL_PAGE_BYTES;
-        if (cdb_instance->kvdata_size + want_size_rounded_to_kernel_pages < cdb_instance->kvdata_size) { SXEL3("WARNING: %s(): avoiding 4GB kvdata wrap; early out with no append for key #%u", __FUNCTION__, cdb_instance->sheets_cells_used); goto SXE_EARLY_OUT; }
-            cdb_instance->kvdata       = mremap(cdb_instance->kvdata, cdb_instance->kvdata_size, cdb_instance->kvdata_size + want_size_rounded_to_kernel_pages, MREMAP_MAYMOVE);
-            cdb_instance->kvdata_size += want_size_rounded_to_kernel_pages;
-            SXEA1(MAP_FAILED != cdb_instance->kvdata, "ERROR: FATAL: expected mremap() not to fail // %s(){}", __FUNCTION__);
+        size_t want_size_rounded_to_kernel_pages
+            = (((key_bytes_want + (SXE_CDB_KERNEL_PAGE_BYTES - 1)) / SXE_CDB_KERNEL_PAGE_BYTES) * SXE_CDB_KERNEL_PAGE_BYTES)
+              + SXE_CDB_KERNEL_PAGE_BYTES;
+
+        if (cdb_instance->kvdata_size + want_size_rounded_to_kernel_pages < cdb_instance->kvdata_size) {
+            SXEL3("WARNING: %s(): avoiding 4GB kvdata wrap; early out with no append for key #%u", __FUNCTION__,    /* COVERAGE EXCLUSION: untested error case */
+                  cdb_instance->sheets_cells_used);
+            goto SXE_EARLY_OUT;    /* COVERAGE EXCLUSION: untested error case */
+        }
+
+        cdb_instance->kvdata       = mremap(cdb_instance->kvdata, cdb_instance->kvdata_size,
+                                            cdb_instance->kvdata_size + want_size_rounded_to_kernel_pages, MREMAP_MAYMOVE);
+        cdb_instance->kvdata_size += want_size_rounded_to_kernel_pages;
+        SXEA1(MAP_FAILED != cdb_instance->kvdata, "ERROR: FATAL: expected mremap() not to fail // %s(){}", __FUNCTION__);
     }
 
     cdb_instance->sheets[sheet].row[row].hash_lo.u16[cell] = sxe_cdb_hash.u16[1];
     cdb_instance->sheets[sheet].row[row].hash_hi.u16[cell] = sxe_cdb_hash.u16[0];
     cdb_instance->sheets[sheet].row[row].hkv_pos.u32[cell] = k;
 
-    SXE_CDB_HKV * hkv = (SXE_CDB_HKV *) &cdb_instance->kvdata[k];
-    if      (1 == header_len) { hkv->header_len_1.flag = 0;                                                               hkv->header_len_1.key_len = sxe_cdb_key_len; hkv->header_len_1.val_len = val_len; memcpy(&hkv->header_len_1.content[0], sxe_cdb_key, sxe_cdb_key_len); memcpy(&hkv->header_len_1.content[sxe_cdb_key_len], val, val_len); }
-    else if (3 == header_len) { hkv->header_len_3.flag = 1;                                                               hkv->header_len_3.key_len = sxe_cdb_key_len; hkv->header_len_3.val_len = val_len; memcpy(&hkv->header_len_3.content[0], sxe_cdb_key, sxe_cdb_key_len); memcpy(&hkv->header_len_3.content[sxe_cdb_key_len], val, val_len); }
-    else if (5 == header_len) { hkv->header_len_5.flag = 0; hkv->header_len_5.xxx_len = 0; hkv->header_len_5.yyy_len = 0; hkv->header_len_5.key_len = sxe_cdb_key_len; hkv->header_len_5.val_len = val_len; memcpy(&hkv->header_len_5.content[0], sxe_cdb_key, sxe_cdb_key_len); memcpy(&hkv->header_len_5.content[sxe_cdb_key_len], val, val_len); }
-    else if (8 == header_len) { hkv->header_len_8.flag = 0; hkv->header_len_8.xxx_len = 0; hkv->header_len_8.yyy_len = 1; hkv->header_len_8.key_len = sxe_cdb_key_len; hkv->header_len_8.val_len = val_len; memcpy(&hkv->header_len_8.content[0], sxe_cdb_key, sxe_cdb_key_len); memcpy(&hkv->header_len_8.content[sxe_cdb_key_len], val, val_len); }
+    SXE_CDB_HKV *hkv = (SXE_CDB_HKV *)&cdb_instance->kvdata[k];
+
+    if (1 == header_len) {
+        hkv->header_len_1.flag    = 0;
+        hkv->header_len_1.key_len = sxe_cdb_key_len;    // SonarQube False Positive
+        hkv->header_len_1.val_len = val_len;            // SonarQube False Positive
+        memcpy(&hkv->header_len_1.content[0], sxe_cdb_key, sxe_cdb_key_len);
+        memcpy(&hkv->header_len_1.content[sxe_cdb_key_len], val, val_len);
+    } else if (3 == header_len) {
+        hkv->header_len_3.flag    = 1;
+        hkv->header_len_3.key_len = sxe_cdb_key_len;    // SonarQube False Positive
+        hkv->header_len_3.val_len = val_len;            // SonarQube False Positive
+        memcpy(&hkv->header_len_3.content[0], sxe_cdb_key, sxe_cdb_key_len);
+        memcpy(&hkv->header_len_3.content[sxe_cdb_key_len], val, val_len);
+    } else if (5 == header_len) {
+        hkv->header_len_5.flag    = 0;
+        hkv->header_len_5.xxx_len = 0;
+        hkv->header_len_5.yyy_len = 0;
+        hkv->header_len_5.key_len = sxe_cdb_key_len;
+        hkv->header_len_5.val_len = val_len;
+        memcpy(&hkv->header_len_5.content[0], sxe_cdb_key, sxe_cdb_key_len);
+        memcpy(&hkv->header_len_5.content[sxe_cdb_key_len], val, val_len);
+    } else if (8 == header_len) {
+        hkv->header_len_8.flag    = 0;
+        hkv->header_len_8.xxx_len = 0;
+        hkv->header_len_8.yyy_len = 1;
+        hkv->header_len_8.key_len = sxe_cdb_key_len;
+        hkv->header_len_8.val_len = val_len;
+        memcpy(&hkv->header_len_8.content[0], sxe_cdb_key, sxe_cdb_key_len);
+        memcpy(&hkv->header_len_8.content[sxe_cdb_key_len], val, val_len);
+    }
 
     cdb_instance->kvdata_used       += key_bytes_want;
     cdb_instance->sheets_cells_used ++;
@@ -671,15 +723,17 @@ sxe_cdb_instance_inc(SXE_CDB_INSTANCE * cdb_instance, uint32_t counts_list)
     SXE_CDB_HKV * last_hkv; uint32_t next_hkv_pos; SXE_CDB_HKV_LIST * next_val_ptr; uint32_t last_c;
     SXE_CDB_HKV * next_hkv; uint32_t last_hkv_pos; SXE_CDB_HKV_LIST * last_val_ptr; uint32_t next_c;
     this_hkv = sxe_cdb_instance_get_hkv_raw(cdb_instance);
+
     if (NULL == this_hkv) {
         SXEL7("key doesn't exist; so create it!");
         uint8_t val_dummy[SXE_CDB_HKV_LIST_BYTES];
+
         if (SXE_CDB_UID_NONE != sxe_cdb_instance_put_val(cdb_instance, &val_dummy[0], sizeof(val_dummy))) { /* if key appended */
             this_hkv = sxe_cdb_instance_get_hkv_raw(cdb_instance);
             SXEA6(this_hkv, "ERROR: INTERNAL: did sxe_cdb_instance_put_val() but can't sxe_cdb_instance_get_hkv()");
             sxe_cdb_hkv_unpack(this_hkv, &this);
 
-            this_hkv_pos = (uint8_t *) this_hkv - cdb_instance->kvdata;
+            this_hkv_pos = (uint8_t *) this_hkv - cdb_instance->kvdata;    // SonarQube False Positive
             this_val_ptr = (SXE_CDB_HKV_LIST *) this.val;
             this_c       = cdb_instance->counts_lo[counts_list];
 
@@ -738,9 +792,10 @@ sxe_cdb_instance_inc(SXE_CDB_INSTANCE * cdb_instance, uint32_t counts_list)
             goto SXE_EARLY_OUT;
         }
 
-        this_hkv_pos = (uint8_t *) this_hkv - cdb_instance->kvdata;
+        this_hkv_pos = (uint8_t *) this_hkv - cdb_instance->kvdata;    // SonarQube False Positive
         this_val_ptr = (SXE_CDB_HKV_LIST *) this.val              ;
-        this_c       = this_val_ptr->count_to_use                 ; SXEA6(SXE_CDB_COUNT_NONE != this_c, "ERROR: INTERNAL: unexpected SXE_CDB_COUNT_NONE");
+        this_c       = this_val_ptr->count_to_use                 ;
+        SXEA6(SXE_CDB_COUNT_NONE != this_c, "ERROR: INTERNAL: unexpected SXE_CDB_COUNT_NONE");
 
         if (this_c >= cdb_instance->counts_size) {
             SXEL3("WARN:  %s(){} tried to increment key which is not a counter; early out without incrementing // referenced counter %u but only have %u counters", __FUNCTION__, this_c, cdb_instance->counts_size);
@@ -988,10 +1043,12 @@ sxe_cdb_ensemble_new(
 
         SXEL6("creating array of cdb pointers, each with its own lock:");
         uint32_t i;
+
         for (i = 0; i < cdb_count; i++) {
-            cdb_ensemble->cdb_instances[i] = sxe_cdb_instance_new(keys_at_start / cdb_count, kvdata_maximum / cdb_count);
+            cdb_ensemble->cdb_instances[i] = sxe_cdb_instance_new(keys_at_start / cdb_count, kvdata_maximum / cdb_count);    // SonarQube False Positive
             sxe_spinlock_construct(&cdb_ensemble->cdb_instance_locks[i]); /* in case we need locks */
         }
+
         cdb_ensemble->cdb_count     = cdb_count;
         cdb_ensemble->cdb_is_locked = cdb_is_locked ? 1 : 0;
     }

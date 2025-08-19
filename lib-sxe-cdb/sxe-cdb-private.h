@@ -132,7 +132,7 @@ union SXE_CDB_HKV {
     } __attribute__((packed)) as_part;
 
 typedef struct SXE_CDB_COUNT {
-    uint64_t count : 48; /* 6 bytes; unique count that key(s) have reached    */
+    uint64_t count : 48; /* 6 bytes; unique count that key(s) have reached    */    // SonarQube False Positive
     uint32_t next      ; /* 4 bytes; next higher count in list                */
     uint32_t last      ; /* 4 bytes; last lower  count in list                */
     uint32_t hkv1      ; /* 4 bytes; first hkv in list with this unique count */
@@ -161,16 +161,15 @@ struct SXE_CDB_INSTANCE {
     SXE_CDB_COUNT * counts                             ; /* pointer to mremap()able key       count memory */
     SXE_CDB_SHEET * sheets                             ; /* pointer to mremap()able key       index memory */
     uint8_t       * kvdata                             ; /* pointer to mremap()able key,value store memory */
-    uint32_t        kvdata_size                        ; /* bytes allocated & used or not to store key,value pairs */
-    uint32_t        kvdata_used                        ; /* bytes allocated & used        to store key,value pairs */
-    uint32_t        kvdata_maximum                     ; /* bytes allocated max threshold to store key,value pairs */
-    uint32_t        sheets_size                        ; /* bytes allocated : sheets_size * SXE_CDB_SHEET_BYTES */
-    uint32_t        sheets_cells_size                  ; /* cells allocated & used or not to index a key */
-    uint32_t        sheets_cells_used                  ; /* cells allocated & used        to index a key */
-    uint32_t        sheets_split                       ; /* times 1 sheet split into 2 sheets */
     uint64_t        sheets_split_keys                  ; /* accumulated total of all keys examined during splits */
     uint64_t        keylen_misses                      ; /* times hash   matched but keylen didn't match */
     uint64_t        memcmp_misses                      ; /* times keylen matched but key    didn't match */
+    uint32_t        kvdata_size                        ; /* bytes allocated & used or not to store key,value pairs */
+    uint32_t        kvdata_used                        ; /* bytes allocated & used        to store key,value pairs */
+    uint32_t        kvdata_maximum                     ; /* bytes allocated max threshold to store key,value pairs */
+    uint32_t        sheets_cells_size                  ; /* cells allocated & used or not to index a key */
+    uint32_t        sheets_cells_used                  ; /* cells allocated & used        to index a key */
+    uint32_t        sheets_split                       ; /* times 1 sheet split into 2 sheets */
     uint32_t        keys_at_start                      ; /* sxe_cdb_instance_new() copy for sxe_cdb_instance_reboot() */
     uint32_t        counts_pages                       ; /* kernel pages @ counts */ //todo: add _pages to sheets & kvdata
     uint32_t        counts_size                        ; /* bytes allocated : counts_size * SXE_CDB_COUNT_BYTES */
@@ -179,6 +178,7 @@ struct SXE_CDB_INSTANCE {
     uint32_t        counts_used                        ; /*   used  total in generic    double linked *counts* list */
     uint32_t        counts_hi[SXE_CDB_COUNTS_LISTS_MAX]; /* highest count in particular double linked *counts* list */
     uint32_t        counts_lo[SXE_CDB_COUNTS_LISTS_MAX]; /* lowest  count in particular double linked *counts* list */
+    uint16_t        sheets_size                        ; /* bytes allocated : sheets_size * SXE_CDB_SHEET_BYTES */
     uint16_t        sheets_index[SXE_CDB_SHEETS_MAX]   ;
 } __attribute__((packed));
 

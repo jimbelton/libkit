@@ -1,8 +1,10 @@
 libkit (2.11) stable; urgency=low
   * DPT-3563 - SonarQube 'bug's reported in 2.10 release
   * DPT-3592 - Need sxe-cdb.h module in libkit
+  * DPT-3613 - Remove redundant sxe-sortedarray.c
+  * DPT-3620 - Address sonarqube codesmells in libkit/lib-cdb
 
- -- Jim Belton <jabelton@cisco.com>  Thu, 32 Jul 2025 15:35:42 +0000
+ -- Jim Belton <jabelton@cisco.com>  Fri, 15 Aug 2025 14:04:42 +0000
 
 libkit (2.10) stable; urgency=low
   * DPT-3518 - Handle invalid timezones passed into kit_timezone_time_to_localtime

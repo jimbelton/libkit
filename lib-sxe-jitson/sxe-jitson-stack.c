@@ -910,7 +910,8 @@ sxe_jitson_stack_push_string_reversed(struct sxe_jitson_stack *stack, const char
 {
     unsigned idx, i;
 
-    len = len ?: strlen(string);
+    SXEA6(string, "String must not be NULL");
+    len = len ?: strlen(string);    // SonarQube False Positive
 
     if ((uint32_t)len != len) {
         errno = ENAMETOOLONG;    /* COVERAGE EXCLUSION: Copied string > 4294967295 characters */

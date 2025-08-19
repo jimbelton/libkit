@@ -164,8 +164,8 @@ typedef union  SXE_CDB_HKV      SXE_CDB_HKV     ;
 
 typedef union SXE_CDB_UID {
     SXE_CDB_UID_INTERNAL;
-    struct { uint64_t u : 32; /* 4 bytes; instance level */ } __attribute__((packed)) as_u32;
-    struct { uint64_t u : 40; /* 5 bytes; ensemble level */ } __attribute__((packed)) as_u40;
+    struct { uint64_t u : 32; /* 4 bytes; instance level */ } __attribute__((packed)) as_u32;    // SonarQube False Positive
+    struct { uint64_t u : 40; /* 5 bytes; ensemble level */ } __attribute__((packed)) as_u40;    // SonarQube False Positive
     struct { uint64_t u     ; /* 8 bytes; c/api    level */ } __attribute__((packed)) as_u64;
 } SXE_CDB_UID;
 

@@ -29,11 +29,14 @@
 #if __FreeBSD__
 #include <sys/types.h>
 #endif
+
 #include <netinet/in.h>
+#include <resolv.h>
 #include <stdbool.h>
 #include <string.h>
 
-#include "kit-time.h"     // For backward compatibility
+#include "kit-sortedarray.h"    // For backward compatibility
+#include "kit-time.h"           // For backward compatibility
 
 #define KIT_UNSIGNED_MAX (~0U)
 
@@ -48,11 +51,6 @@
 
 #define KIT_DEVICEID_SIZE               8
 #define KIT_DEVICEID_STR_LEN            (2 * KIT_DEVICEID_SIZE)
-
-#define KIT_SORTEDARRAY_DEFAULT         0       // No special behaviours
-#define KIT_SORTEDARRAY_ALLOW_INSERTS   0x01    // Elements can be added to a sorted array out of order (expensive!)
-#define KIT_SORTEDARRAY_ALLOW_GROWTH    0x02    // Sorted array is allowed to grow dynamically
-#define KIT_SORTEDARRAY_ZERO_COPY       0x04    // Don't copy the key into the array, just return a pointer to the element
 
 #define KIT_UDP_DELAY                   0x01    // Get the delay (RQT) in msec for all packets received on this socket
 #define KIT_UDP_TTLTOS                  0x02    // Get the TTL and TOS fields for all packets received on this socket
@@ -75,19 +73,6 @@ struct kit_md5 {
 struct kit_deviceid {
     uint8_t  bytes[KIT_DEVICEID_SIZE];
 };
-
-struct kit_sortedelement_class {
-    size_t        size;                                // Sizeof the element (including padding if not packed)
-    size_t        keyoffset;                           // Offset of the key within the element
-    int         (*cmp)(const void *, const void *);    // Comparitor for element keys
-    const char *(*fmt)(const void *);                  // Formatter for element keys; return the LRU of 4 static buffers
-};
-
-static inline const char *
-kit_sortedarray_element_to_str(const struct kit_sortedelement_class *type, const void *array, unsigned pos)
-{
-    return type->fmt((const uint8_t *)array + type->size * pos + type->keyoffset);
-}
 
 struct kit_udp_ttltos {
     uint8_t ttl;
@@ -126,7 +111,6 @@ kit_guid_is_null(const struct kit_guid *guid)
 #include "kit-guid-proto.h"
 #include "kit-deviceid-proto.h"
 #include "kit-hostname-proto.h"
-#include "kit-sortedarray-proto.h"
 #include "kit-strto-proto.h"
 #include "kit-udp-proto.h"
 
