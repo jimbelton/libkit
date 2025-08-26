@@ -50,11 +50,11 @@ main(void) {
     ok(!sxe_dict_add(dic, "DE", 2), "sxe_dict_add failed to expand table");
     MOCKFAIL_END_TESTS();
 
-    value_ptr = sxe_dict_add(dic, "DE", 2);
+    value_ptr = sxe_dict_add(dic, "DQ", 2);
     *value_ptr = (const void *)200;
     is(dic->size, 2, "Size after 2 inserts is 2");
 
-    value_ptr = sxe_dict_add(dic, "HJKL", 4);
+    value_ptr = sxe_dict_add(dic, "FGHI", 4);
     *value_ptr = (const void *)300;
 
     /* The following is because after doubling to 2, 1 and 2 ended up in bucket 0, but 3 ends up in bucket 1.
@@ -63,9 +63,9 @@ main(void) {
 
     ok((value = sxe_dict_find(dic, "ABC",  3)), "ABC found");
     is(value, 100,                              "It's value is 100");
-    ok((value = sxe_dict_find(dic, "DE",   0)), "DE found (and test passing 0 length to use strlen)");
+    ok((value = sxe_dict_find(dic, "DQ",   0)), "DQ found (and test passing 0 length to use strlen)");
     is(value, 200,                              "It's value is 200");
-    ok((value = sxe_dict_find(dic, "HJKL", 4)), "HJKL found");
+    ok((value = sxe_dict_find(dic, "FGHI", 4)), "FGHI found");
     is(value, 300,                              "It's value is 300");
 
     /* Make sure adding a key that's already in the table, a new entry is not added.

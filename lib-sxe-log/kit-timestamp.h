@@ -23,6 +23,7 @@
 #define __KIT_TIMESTAMP_H__
 
 #include <stdint.h>
+#include <sys/time.h>
 #include <time.h>
 
 #define KIT_TIMESTAMP_STRING_SIZE               sizeof("YYYYmmDDHHMMSS.uuuuuu")
