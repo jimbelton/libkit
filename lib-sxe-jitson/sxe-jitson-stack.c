@@ -717,17 +717,17 @@ sxe_jitson_stack_add_value(struct sxe_jitson_stack *stack, unsigned size, uint32
             SXEA6(element, "Elements must be provided for insertion sorted lists");
 
             if (sxe_jitson_cmp(&stack->jitsons[idx - size], element) > 0) {    // Insertion is required
-                struct sxe_sortedarray_class elem_class;
+                struct sxe_sortedarray_class array_class;
                 unsigned                     i;
                 bool                         match;
 
-                elem_class.size      = size * sizeof(*element);
-                elem_class.keyoffset = 0;
-                elem_class.cmp       = (int (*)(const void *, const void *))sxe_jitson_cmp;
-                elem_class.fmt       = NULL;
-                elem_class.flags     = SXE_SORTEDARRAY_CMP_CAN_FAIL;
+                array_class.elem_class.size      = size * sizeof(*element);
+                array_class.elem_class.keyoffset = 0;
+                array_class.elem_class.cmp       = (int (*)(const void *, const void *))sxe_jitson_cmp;
+                array_class.elem_class.fmt       = NULL;
+                array_class.flags                = SXE_SORTEDARRAY_CMP_CAN_FAIL;
 
-                i = sxe_sortedarray_find(&elem_class, &stack->jitsons[collection + 1], len, element, &match);
+                i = kit_sortedarray_find_key(&array_class, &stack->jitsons[collection + 1], len, element, &match);
                 SXEA6(i < len,  "If insertion is required, array index must be found and < len");
                 idx = collection + 1 + size * i;    // Turn the array index into a stack index
                 memmove(&stack->jitsons[idx + 1], &stack->jitsons[idx], (len - i) * size * sizeof(*element));

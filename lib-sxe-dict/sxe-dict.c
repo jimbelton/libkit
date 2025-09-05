@@ -211,7 +211,7 @@ compare_keys(const struct sxe_dict *dic, const struct sxe_dict_node *link, const
     if (dic->flags & SXE_DICT_FLAG_KEYS_HASHED) {
         if (link->key == key)
             return true;
-    } if (dic->flags & SXE_DICT_FLAG_KEYS_STRING) {
+    } else if (dic->flags & SXE_DICT_FLAG_KEYS_STRING) {
         if (strcmp(link->key, key) == 0)
             return true;
     } else {    // Key is binary
@@ -222,24 +222,19 @@ compare_keys(const struct sxe_dict *dic, const struct sxe_dict_node *link, const
     return false;
 }
 
-/**
- * Add a key to a dictionary
+/* Add a hash sum or key to a dictionary
  *
- * @param dic The dictionary
- * @param key The key
- * @param len The size of the key, or 0 if it's a string to determine its length with strlen
+ * @param dic  The dictionary
+ * @param hash The hash sum
+ * @param key  Pointer to the key if the dictionary does not use hashed keys
+ * @param len  The size of the key
  *
  * @return A pointer to a value or NULL on out of memory
- *
- * @note If the caller always saves a non-NULL value in the value pointed at by the return, then if there is a collision, the
- *       value pointed to by the return should be something other than NULL.
  */
-const void **
-sxe_dict_add(struct sxe_dict *dic, const void *key, size_t len)
+static const void **
+add_entry(struct sxe_dict *dic, uint64_t hash, const void *key, size_t len)
 {
     struct sxe_dict_node **link;
-
-    len = len ?: strlen(key);
 
     if (dic->table == NULL) {    // If this is a completely empty dictionary
         if (!(dic->table = MOCKERROR(sxe_dict_add, NULL, ENOMEM, kit_calloc(sizeof(struct sxe_dict_node *), 1)))) {
@@ -250,7 +245,6 @@ sxe_dict_add(struct sxe_dict *dic, const void *key, size_t len)
         dic->size  = 1;
     }
 
-    uint64_t hash   = sxe_hash_64(key, len);
     unsigned bucket = hash % dic->size;
 
     if (dic->table[bucket] != NULL) {
@@ -277,24 +271,60 @@ sxe_dict_add(struct sxe_dict *dic, const void *key, size_t len)
 }
 
 /**
- * Find a key in a dictionary
+ * Add a key to a dictionary
  *
  * @param dic The dictionary
  * @param key The key
  * @param len The size of the key, or 0 if it's a string to determine its length with strlen
  *
- * @return The value, or NULL if the key is not found.
+ * @return A pointer to a value or NULL on out of memory
+ *
+ * @note If the caller always saves a non-NULL value in the value pointed at by the return, then if there is a collision, the
+ *       value pointed to by the return should be something other than NULL.
  */
-const void *
-sxe_dict_find(const struct sxe_dict *dic, const void *key, size_t len)
+const void **
+sxe_dict_add(struct sxe_dict *dic, const void *key, size_t len)
+{
+    len           = len ?: strlen(key);
+    uint64_t hash = sxe_hash_64(key, len);
+    return add_entry(dic, hash, key, len);
+}
+
+/**
+ * Add a hash sum to a dictionary with hashed keys
+ *
+ * @param dic  The dictionary
+ * @param hash The hash sum
+ *
+ * @return A pointer to a value or NULL on out of memory
+ *
+ * @note If the caller always saves a non-NULL value in the value pointed at by the return, then if there is a collision, the
+ *       value pointed to by the return should be something other than NULL.
+ */
+const void **
+sxe_dict_add_hash(struct sxe_dict *dic, uint64_t hash)
+{
+    SXEA6(dic->flags & SXE_DICT_FLAG_KEYS_HASHED, "A hash can't be added to a dictionary that doesn't use hashed keys");
+    return add_entry(dic, hash, NULL, 0);
+}
+
+/* Find a hash sum or key in a dictionary
+ *
+ * @param dic  The dictionary
+ * @param hash The hash sum
+ * @param key  Pointer to the key if the dictionary does not use hashed keys
+ * @param len  The size of the key
+ *
+ * @return The value, or NULL if the key is not found
+ */
+static const void *
+find_entry(const struct sxe_dict *dic, uint64_t hash, const void *key, size_t len)
 {
     struct sxe_dict_node *node;
 
     if (dic->table == NULL)    // If the dictionary is empty and its initial_size was 0, the key is not found.
         return NULL;
 
-    len = len ?: strlen(key);
-    uint64_t hash   = sxe_hash_64((const char *)key, len);
     unsigned bucket = hash % dic->size;
 
     #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -313,6 +343,38 @@ sxe_dict_find(const struct sxe_dict *dic, const void *key, size_t len)
             return node->value;
 
     return NULL;
+}
+
+/**
+ * Find a key in a dictionary
+ *
+ * @param dic The dictionary
+ * @param key The key
+ * @param len The size of the key, or 0 if it's a string to determine its length with strlen
+ *
+ * @return The value, or NULL if the key is not found.
+ */
+const void *
+sxe_dict_find(const struct sxe_dict *dic, const void *key, size_t len)
+{
+    len           = len ?: strlen(key);
+    uint64_t hash = sxe_hash_64((const char *)key, len);
+    return find_entry(dic, hash, key, len);
+}
+
+/**
+ * Find a key in a dictionary
+ *
+ * @param dic  The dictionary
+ * @param hash The hash sum
+ *
+ * @return The value, or NULL if the key is not found
+ */
+const void *
+sxe_dict_find_hash(const struct sxe_dict *dic, uint64_t hash)
+{
+    SXEA6(dic->flags & SXE_DICT_FLAG_KEYS_HASHED, "A hash can't be added to a dictionary that doesn't use hashed keys");
+    return find_entry(dic, hash, NULL, 0);
 }
 
 /**

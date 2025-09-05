@@ -4,8 +4,11 @@ libkit (2.11) stable; urgency=low
   * DPT-3613 - Remove redundant sxe-sortedarray.c
   * DPT-3620 - Address sonarqube codesmells in libkit/lib-cdb
   * DPT-3640 - Use xxh64 in sxe-dict
+  * DPT-3646 - Support sxe-dicts that use 64 bit sums as keys
+  * DPT-3658 - Make kit-sortedarray backward compatible
+  * DPT-3656 - Support prehashed keys in sxe-dict
 
- -- Jim Belton <jabelton@cisco.com>  Fri, 15 Aug 2025 14:04:42 +0000
+ -- Jim Belton <jabelton@cisco.com>  Fri,  5 Sep 2025 14:45:42 +0000
 
 libkit (2.10) stable; urgency=low
   * DPT-3518 - Handle invalid timezones passed into kit_timezone_time_to_localtime

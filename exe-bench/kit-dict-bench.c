@@ -4,20 +4,14 @@
 #include <limits.h>
 #include <string.h>
 #include <sys/time.h>    // Hack: Include before sxe-hash.h because <kit/kit-timestamp.h> does include <sys/time.h>
-//#include <sxe-hash.h>
-//#include <zlib.h>
 
-//#include "conf-loader.h"
-//#include "netsock.h"
-//#include "networks.h"
 #include "kit-alloc.h"
 #include "sxe-dict.h"
+#include "sxe-hash.h"
 
-//static char corpus_relative_path[] = "../../corpra/networks-all";
-//static char buffer[65536];    // Some lines are > 8192, so use a really big buffer
-static char *corpus[10000000];
+static char    *corpus[10000000];
+static uint64_t hashes[10000000];
 
-// Should move this to a generic "bench.c" once we have more than one benchmark
 static uint64_t
 usec_elapsed(struct timeval *start, struct timeval *end)
 {
@@ -41,7 +35,8 @@ main(int argc, char **argv)
     size_t             start_mem;
     unsigned long      count, i;
     char               name[PATH_MAX];
-    bool               use_hashes = false;
+    bool               use_hashes  = false;
+    bool               use_prehash = false;
 
     count = sizeof(corpus) / sizeof(corpus[0]);    // Default to preallocation
 
@@ -55,7 +50,12 @@ main(int argc, char **argv)
         else if (strcmp(argv[1], "-h") == 0) {
             assert(argc > 1);
             use_hashes = true;
-        } 
+        }
+        else if (strcmp(argv[1], "-p") == 0) {
+            assert(argc > 1);
+            use_hashes  = true;
+            use_prehash = true;
+        }
         else {
             fprintf(stderr, "usage: kit-dict-bench [-c <initial-count>] [-h]\nerror: invalid argument '%s'\n", argv[1]);
             exit(1);
@@ -67,7 +67,11 @@ main(int argc, char **argv)
 
     for (i = 0; i < sizeof(corpus) / sizeof(corpus[0]); i++) {
         snprintf(name, sizeof(name), "match_variable_%"PRIx64, i);
-        corpus[i] = strdup(name);
+
+        if (use_prehash)
+            hashes[i] = sxe_hash_64(name, 0);
+        else
+            corpus[i] = kit_strdup(name);
     }
 
     start_mem = kit_allocated_bytes();
@@ -75,10 +79,16 @@ main(int argc, char **argv)
     sxe_dict_init(&dict, count, 100, 2, use_hashes ? SXE_DICT_FLAG_KEYS_HASHED : SXE_DICT_FLAG_KEYS_NOCOPY);
     count = sizeof(corpus) / sizeof(corpus[0]);
 
-    for (i = 0; i < count; i++) {
-        assert((value = sxe_dict_add(&dict, corpus[i], 0)));
-        *value = (void *)i;
-    }
+    if (use_prehash)
+        for (i = 0; i < count; i++) {
+            assert((value = sxe_dict_add_hash(&dict, hashes[i])));
+            *value = (void *)i;
+        }
+    else
+        for (i = 0; i < count; i++) {
+            assert((value = sxe_dict_add(&dict, corpus[i], 0)));
+            *value = (void *)i;
+        }
 
     printf("Construction Duration: %"PRIu64" usec\n", usec_elapsed(&start_time, NULL));
     printf("Memory Allocated: %zu bytes\n", kit_allocated_bytes() - start_mem);
@@ -87,8 +97,12 @@ main(int argc, char **argv)
      */
     assert(gettimeofday(&start_time, NULL) == 0);
 
-    for (i = 0; i < count; i++)
-        assert(sxe_dict_find(&dict, corpus[i], 0) == (void *)i);
+    if (use_prehash)
+        for (i = 0; i < count; i++)
+            assert(sxe_dict_find_hash(&dict, hashes[i]) == (void *)i);
+    else
+        for (i = 0; i < count; i++)
+            assert(sxe_dict_find(&dict, corpus[i], 0) == (void *)i);
 
     printf("Search Duration: %"PRIu64" usec\n", usec_elapsed(&start_time, NULL));
     return 0;

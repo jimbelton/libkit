@@ -55,7 +55,11 @@ unsigned_fmt(const void *u)
     return string[next];
 }
 
-static struct kit_sortedarray_class testclass = { sizeof(unsigned), 0, unsigned_cmp, unsigned_fmt, NULL, 0, 0};
+/* elem_class is only used to test backward compatiblity
+ */
+static struct kit_sortedelement_class elem_class = { sizeof(unsigned), 0, unsigned_cmp, unsigned_fmt};
+static struct kit_sortedarray_class   testclass  = \
+    KIT_SORTEDARRAY_CLASS_INITIALIZER(sizeof(unsigned), 0, unsigned_cmp, unsigned_fmt, NULL, 0, 0);
 static const unsigned u[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
 
 static bool
@@ -63,7 +67,7 @@ my_visit(void *void_visitor, const void *element)
 {
     struct my_visitor *visitor = void_visitor;
 
-    SXEA1(kit_sortedarray_add_element(&testclass, (void **)&visitor->array, &visitor->count, &visitor->size, element),
+    SXEA1(kit_sortedarray_add_elem(&testclass, (void **)&visitor->array, &visitor->count, &visitor->size, element),
           "Failed to add %u to the intersection", *(const unsigned *)element);
     SXEL6("Added %u to the intersection", *(const unsigned *)element);
     return true;
@@ -98,45 +102,46 @@ main(void)
 //  KIT_ALLOC_SET_LOG(1);    // Turn off when done
 
     testclass.flags = KIT_SORTEDARRAY_DEFAULT;
-    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                        "Did not delete 2 (empty array)");
+    ok(!kit_sortedarray_delete_elem(&testclass, array, &count, &value),                "Did not delete 2 (empty array)");
 
     MOCKFAIL_START_TESTS(1, kit_sortedarray_add);
-    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add 2 (realloc failed)");
+    ok(!kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add 2 (realloc failed)");
     MOCKFAIL_END_TESTS();
 
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 2 (first element)");
-    ok(array,                                                                             "Array was allocated");
-    is(count, 1,                                                                          "Array has one element");
-    /* force inaccessible delete */
-    count = 0;
-    ok(!kit_sortedarray_delete(&testclass, array, &count, &value),                        "Did not delete 2 (count is zero)");
-    /* reset */
-    count = 1;
-    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add a second 2");
+    /* Verify deprecated interface; update once it is removed
+     */
+    ok(kit_sortedarray_add(&elem_class, (void **)&array, &count, &alloc, &value, 0),   "Added 2 (first element)");
+    ok(array,                                                                          "Array was allocated");
+    is(count, 1,                                                                       "Array has one element");
+
+    count = 0;    //force inaccessible delete
+    ok(!kit_sortedarray_delete_elem(&testclass, array, &count, &value),                "Did not delete 2 (count is zero)");
+    count = 1;    // reset
+    ok(!kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add a second 2");
     value = 3;
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 3 (second element)");
+    ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),  "Added 3 (second element)");
     value = 1;
-    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to added 1 out of order");
-    is(count, 2,                                                                          "Array has two elements");
+    ok(!kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value), "Failed to added 1 out of order");
+    is(count, 2,                                                                       "Array has two elements");
     value = 7;
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 7 (third element)");
+    ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),  "Added 7 (third element)");
     value = 13;
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 13 (fourth element)");
+    ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),  "Added 13 (fourth element)");
     value = 17;
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 17 (fifth element)");
+    ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),  "Added 17 (fifth element)");
     value = 23;
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 23 (sixth element)");
+    ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),  "Added 23 (sixth element)");
 
     testclass.flags = KIT_SORTEDARRAY_ALLOW_INSERTS;
     value = 7;
-    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Can't add 7 (duplicate element)");
+    ok(!kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value), "Can't add 7 (duplicate element)");
     value = 5;
-    ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),  "Added 5 (third element)");
-    is(count, 7,                                                                          "Array now has seven elements");
+    ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),  "Added 5 (third element)");
+    is(count, 7,                                                                       "Array now has seven elements");
 
     testclass.flags = KIT_SORTEDARRAY_DEFAULT;    // No longer allow insertions
     value = 29;
-    ok(!kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add 29 (full)");
+    ok(!kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value), "Failed to add 29 (full)");
 
     is(array[0], 2,  "Element 0 is 2");
     is(array[1], 3,  "Element 1 is 3");
@@ -144,30 +149,35 @@ main(void)
     is(array[3], 7,  "Element 3 is 7");
     is(array[6], 23, "Element 6 is 23");
 
-    is(kit_sortedarray_find(&testclass, array, count, &u[1],  &match), 0, "Correct insertion point for 1");
-    ok(!match,                                                            "1 is not an exact match");
-    is(kit_sortedarray_find(&testclass, array, count, &u[2],  &match), 0, "Found 2");
-    ok(match,                                                             "2 is an exact match");
-    is(kit_sortedarray_find(&testclass, array, count, &u[6],  &match), 3, "Correct insertion point for 6");
-    is(kit_sortedarray_find(&testclass, array, count, &u[7],  &match), 3, "Found 7");
-    is(kit_sortedarray_find(&testclass, array, count, &u[20], &match), 6, "Correct insertion point for 20");
-    is(kit_sortedarray_find(&testclass, array, count, &u[23], &match), 6, "Found 23");
-    is(kit_sortedarray_find(&testclass, array, count, &u[24], &match), 7, "Correct insertion point for 24");
-    ok(!match,                                                            "24 is not an exact match");
+    /* Verify deprecated interface; update once it is removed
+     */
+    is(kit_sortedarray_find(&elem_class, array, count, &u[1],  &match), 0,    "Correct insertion point for 1");
+    ok(!match,                                                                "1 is not an exact match");
 
-    ok(!kit_sortedarray_get(&testclass, array, count, &u[1]),  "Couldn't get 1");
-    ok(!kit_sortedarray_get(&testclass, array, count, &u[6]),  "Couldn't get 6");
-    ok(!kit_sortedarray_get(&testclass, array, count, &u[20]), "Couldn't get 20");
-    ok(!kit_sortedarray_get(&testclass, array, count, &u[24]), "Couldn't get 24");
+    is(kit_sortedarray_find_key(&testclass, array, count, &u[2],  &match), 0, "Found 2");
+    ok(match,                                                                 "2 is an exact match");
+    is(kit_sortedarray_find_key(&testclass, array, count, &u[6],  &match), 3, "Correct insertion point for 6");
+    is(kit_sortedarray_find_key(&testclass, array, count, &u[7],  &match), 3, "Found 7");
+    is(kit_sortedarray_find_key(&testclass, array, count, &u[20], &match), 6, "Correct insertion point for 20");
+    is(kit_sortedarray_find_key(&testclass, array, count, &u[23], &match), 6, "Found 23");
+    is(kit_sortedarray_find_key(&testclass, array, count, &u[24], &match), 7, "Correct insertion point for 24");
+    ok(!match,                                                                "24 is not an exact match");
+
+    /* Verify deprecated interface; update once it is removed
+     */
+    ok(!kit_sortedarray_get(&elem_class, array, count, &u[1]),      "Couldn't get 1");
+    ok(!kit_sortedarray_get_elem(&testclass, array, count, &u[6]),  "Couldn't get 6");
+    ok(!kit_sortedarray_get_elem(&testclass, array, count, &u[20]), "Couldn't get 20");
+    ok(!kit_sortedarray_get_elem(&testclass, array, count, &u[24]), "Couldn't get 24");
 
     const unsigned *g;
-    ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[2]))  && *g == 2,  "Got 2");
-    ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[7]))  && *g == 7,  "Got 7");
-    ok((g = (const unsigned *)kit_sortedarray_get(&testclass, array, count, &u[23])) && *g == 23, "Got 23");
+    ok((g = (const unsigned *)kit_sortedarray_get_elem(&testclass, array, count, &u[2]))  && *g == 2,  "Got 2");
+    ok((g = (const unsigned *)kit_sortedarray_get_elem(&testclass, array, count, &u[7]))  && *g == 7,  "Got 7");
+    ok((g = (const unsigned *)kit_sortedarray_get_elem(&testclass, array, count, &u[23])) && *g == 23, "Got 23");
 
     is(count, 7, "Array now has 7 elements");
 
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[5]), "Deleted 5");
+    ok(kit_sortedarray_delete_elem(&testclass, array, &count, &u[5]), "Deleted 5");
 
     is(count, 6, "Array now has 6 elements");
 
@@ -179,11 +189,13 @@ main(void)
     is(array[4], 17, "Element 4 is 17");
     is(array[5], 23, "Element 5 is 23");
 
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[2]),   "Deleted 2");
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[7]),   "Deleted 7");
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[23]),  "Deleted 23");
-    ok(!kit_sortedarray_delete(&testclass, array, &count, &u[23]), "Did not delete 23 (already deleted)");
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[13]),  "Deleted 13");
+    /* Verify deprecated interface; update once it is removed
+     */
+    ok(kit_sortedarray_delete(&elem_class, array, &count, &u[2]),       "Deleted 2");
+    ok(kit_sortedarray_delete_elem(&testclass, array, &count, &u[7]),   "Deleted 7");
+    ok(kit_sortedarray_delete_elem(&testclass, array, &count, &u[23]),  "Deleted 23");
+    ok(!kit_sortedarray_delete_elem(&testclass, array, &count, &u[23]), "Did not delete 23 (already deleted)");
+    ok(kit_sortedarray_delete_elem(&testclass, array, &count, &u[13]),  "Deleted 13");
 
     is(count, 2, "Array now has 2 elements");
 
@@ -191,23 +203,23 @@ main(void)
     is(array[0], 3,  "Element 0 is 3");
     is(array[1], 17, "Element 1 is 17");
 
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[3]),   "Deleted 3");
-    ok(kit_sortedarray_delete(&testclass, array, &count, &u[17]),  "Deleted 17");
-    is(count, 0,                                                   "Array now has 0 elements");
+    ok(kit_sortedarray_delete_elem(&testclass, array, &count, &u[3]),  "Deleted 3");
+    ok(kit_sortedarray_delete_elem(&testclass, array, &count, &u[17]), "Deleted 17");
+    is(count, 0,                                                       "Array now has 0 elements");
 
     testclass.flags = KIT_SORTEDARRAY_ALLOW_INSERTS;
 
     for (value = 0; value < 7; value++)
-        ok(kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value), "Added %d", value);
+        ok(kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value), "Added %d", value);
 
     is(count, 7, "Array now has 7 elements");
 
     testclass.flags = KIT_SORTEDARRAY_ALLOW_GROWTH | KIT_SORTEDARRAY_ZERO_COPY;
     value           = 29;
-    ok(value_ptr = (unsigned *)kit_sortedarray_add_element(&testclass, (void **)&array, &count, &alloc, &value),
-       "Added 29 (full, but growth allowed)");
+    ok(value_ptr = (unsigned *)kit_sortedarray_add_elem(&testclass, (void **)&array, &count, &alloc, &value),
+                       "Added 29 (full, but growth allowed)");
     ok(array[7] != 29, "Zero copy specified, so added array element was not initialized");
-    is(count, 8, "Array now has 8 elements");
+    is(count, 8,       "Array now has 8 elements");
     *value_ptr = 29;
     ok(array[7] == 29, "Zero copy specified, set to 29");
     kit_free(array);

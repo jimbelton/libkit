@@ -114,7 +114,7 @@ close_array_and_get(struct sxe_jitson_stack *stack)
 static const struct sxe_jitson *
 sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct sxe_jitson *right)
 {
-    struct kit_sortedarray_class elem_type;
+    struct kit_sortedarray_class array_class;
     struct sxe_jitson_stack     *stack;
     const struct sxe_jitson     *elem_lhs, *elem_rhs, *json = NULL;
     size_t                       i, len_lhs;
@@ -134,10 +134,10 @@ sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct s
     len_lhs = sxe_jitson_len(left);
 
     if (left->type & SXE_JITSON_TYPE_IS_ORD) {    // Left hand size is ordered
-        elem_type.keyoffset = 0;
-        elem_type.fmt       = NULL;
-        elem_type.value     = stack;
-        elem_type.flags     = KIT_SORTEDARRAY_CMP_CAN_FAIL;
+        array_class.elem_class.keyoffset = 0;
+        array_class.elem_class.fmt       = NULL;
+        array_class.value                = stack;
+        array_class.flags                = KIT_SORTEDARRAY_CMP_CAN_FAIL;
 
         /* If both arrays contain uniformly sized elements
             */
@@ -145,11 +145,11 @@ sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct s
             if (left->uniform.size != right->uniform.size)
                 goto EARLY_OUT;
 
-            elem_type.size  = left->uniform.size;
-            elem_type.cmp   = (int (*)(const void *, const void *))sxe_jitson_cmp;
-            elem_type.visit = intersect_add_element;
+            array_class.elem_class.size = left->uniform.size;
+            array_class.elem_class.cmp  = (int (*)(const void *, const void *))sxe_jitson_cmp;
+            array_class.visit           = intersect_add_element;
 
-            if (!kit_sortedarray_intersect(&elem_type, &left[1], left->len, &right[1], right->len))
+            if (!kit_sortedarray_intersect(&array_class, &left[1], left->len, &right[1], right->len))
                 goto ERROR_OUT;
 
             goto EARLY_OUT;
@@ -164,13 +164,13 @@ sxe_jitson_intersect_ordered_array(const struct sxe_jitson *left, const struct s
             if (!(right->type & SXE_JITSON_TYPE_INDEXED))    // If the right array isn't indexed, index it
                 sxe_jitson_array_get_element(right, 0);
 
-            array_left      = left;
-            array_right     = right;
-            elem_type.size  = sizeof(left->index[0]);
-            elem_type.cmp   = indexed_element_cmp;
-            elem_type.visit = intersect_add_indexed_element;
+            array_left                  = left;
+            array_right                 = right;
+            array_class.elem_class.size = sizeof(left->index[0]);
+            array_class.elem_class.cmp  = indexed_element_cmp;
+            array_class.visit           = intersect_add_indexed_element;
 
-            if (!kit_sortedarray_intersect(&elem_type, left->index, left->len, right->index, right->len))
+            if (!kit_sortedarray_intersect(&array_class, left->index, left->len, right->index, right->len))
                 goto ERROR_OUT;    /* COVERAGE EXCLUSION: Ordered arrays of non-uniform size with incomparable elements */
 
             goto EARLY_OUT;
@@ -259,7 +259,7 @@ intersect_check_element(void *found_out, const void *element)
 static const struct sxe_jitson *
 sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const struct sxe_jitson *right)
 {
-    struct kit_sortedarray_class elem_type;
+    struct kit_sortedarray_class array_class;
     const struct sxe_jitson     *elem_lhs, *elem_rhs;
     size_t                       i, len_lhs;
     bool                         found;
@@ -276,11 +276,11 @@ sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const str
     len_lhs = sxe_jitson_len(left);
 
     if (left->type & SXE_JITSON_TYPE_IS_ORD) {    // Left hand size is ordered
-        elem_type.keyoffset = 0;
-        elem_type.fmt       = NULL;
-        found               = false;
-        elem_type.value     = &found;
-        elem_type.flags     = KIT_SORTEDARRAY_CMP_CAN_FAIL;
+        array_class.elem_class.keyoffset = 0;
+        array_class.elem_class.fmt       = NULL;
+        array_class.value                = &found;
+        array_class.flags                = KIT_SORTEDARRAY_CMP_CAN_FAIL;
+        found                            = false;
 
         /* If both arrays contain uniformly sized elements
          */
@@ -288,11 +288,11 @@ sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const str
             if (left->uniform.size != right->uniform.size)    // Different sized elements can't intersect
                 return sxe_jitson_false;
 
-            elem_type.size  = left->uniform.size;
-            elem_type.cmp   = (int (*)(const void *, const void *))sxe_jitson_cmp;
-            elem_type.visit = intersect_check_element;
+            array_class.elem_class.size = left->uniform.size;
+            array_class.elem_class.cmp  = (int (*)(const void *, const void *))sxe_jitson_cmp;
+            array_class.visit           = intersect_check_element;
 
-            if (!kit_sortedarray_intersect(&elem_type, &left[1], left->len, &right[1], right->len)) {   // Incomplete intersect
+            if (!kit_sortedarray_intersect(&array_class, &left[1], left->len, &right[1], right->len)) {   // Incomplete intersect
                 if (found)
                     return sxe_jitson_true;
 
@@ -311,13 +311,13 @@ sxe_jitson_intersect_test_ordered_array(const struct sxe_jitson *left, const str
             if (!(right->type & SXE_JITSON_TYPE_INDEXED))    // If the right array isn't indexed, index it
                 sxe_jitson_array_get_element(right, 0);
 
-            array_left      = left;
-            array_right     = right;
-            elem_type.size  = sizeof(left->index[0]);
-            elem_type.cmp   = indexed_element_cmp;
-            elem_type.visit = intersect_check_element;
+            array_left                  = left;
+            array_right                 = right;
+            array_class.elem_class.size = sizeof(left->index[0]);
+            array_class.elem_class.cmp  = indexed_element_cmp;
+            array_class.visit           = intersect_check_element;
 
-            if (!kit_sortedarray_intersect(&elem_type, left->index, left->len, right->index, right->len)) {    // Incomplete
+            if (!kit_sortedarray_intersect(&array_class, left->index, left->len, right->index, right->len)) {    // Incomplete
                 if (found)
                     return sxe_jitson_true;
 

@@ -26,14 +26,18 @@ my_visit(const void *key, size_t key_size, const void **value, void *user)
     return visit_all;
 }
 
+static uint64_t hashes[100];
+
 int
 main(void) {
     struct sxe_dict  dictator[1];
     struct sxe_dict *dic;
     const void     **value_ptr;
     const void      *value;
+    unsigned         i;
+    char             name[PATH_MAX];
 
-    kit_test_plan(40);
+    kit_test_plan(44);
     // KIT_ALLOC_SET_LOG(1);    // Turn off when done
 
     MOCKFAIL_START_TESTS(1, sxe_dict_new);
@@ -51,7 +55,7 @@ main(void) {
     value_ptr = sxe_dict_add(dic, "ABC", 3);
     is(*value_ptr, NULL, "New entry should not have a value");
     *value_ptr = (const void *)100;
-    is(dic->size, 1,    "Size after 1 insert is 1");
+    is(dic->size, 1, "Size after 1 insert is 1");
 
     MOCKFAIL_START_TESTS(1, sxe_dict_resize);
     ok(!sxe_dict_add(dic, "DE", 2), "sxe_dict_add failed to expand table");
@@ -91,12 +95,12 @@ main(void) {
     is(visits, 1,                                            "Visited all (1) nodes");
 
     visit_all = false;    // From now on, short circuit walks after visiting one entry
-    
+
     visits = 0;
     sxe_dict_forEach(dictator, my_visit, dictator);    // Make sure old name is supported for backward compatibility
     is(visits, 1, "Visited 1 node");
     sxe_dict_fini(dictator);
-    
+
     ok(sxe_dict_init(dictator, 0, 100, 2, SXE_DICT_FLAG_KEYS_STRING), "Constructed a dictionary that stores keys as strings");
     value_ptr  = sxe_dict_add(dictator, "longname", 0);
     *value_ptr = (const void *)1026;
@@ -109,12 +113,38 @@ main(void) {
     sxe_dict_fini(dictator);
 
     ok(sxe_dict_init(dictator, 0, 100, 2, SXE_DICT_FLAG_KEYS_HASHED), "Constructed a dictionary that stores keys as hash sums");
-    value_ptr = sxe_dict_add(dictator, "one", 0);
+    value_ptr  = sxe_dict_add(dictator, "one", 0);
     *value_ptr = (const void *)1;
-    value_ptr = sxe_dict_add(dictator, "two", 0);
+    value_ptr  = sxe_dict_add_hash(dictator, sxe_hash_64("two", 0));
     *value_ptr = (const void *)2;
-    is(sxe_dict_find(dictator, "one", 3), 1,                          "Found 'one'");
+    is(sxe_dict_find_hash(dictator, sxe_hash_64("one", 3)), 1,        "Found 'one'");
+    is(sxe_dict_find(dictator, "two", 3), 2,                          "Found 'two'");
     sxe_dict_walk(dictator, my_visit, dictator);
+    sxe_dict_fini(dictator);
+
+    ok(sxe_dict_init(dictator, 0, 100, 2, SXE_DICT_FLAG_KEYS_HASHED), "Constructed another dictionary whose keys are hash sums");
+
+    for (i = 0; i < sizeof(hashes) / sizeof(hashes[0]); i++) {
+        snprintf(name, sizeof(name), "match_variable_%u", i);
+        hashes[i] = sxe_hash_64(name, 0);
+    }
+
+    for (i = 0; i < sizeof(hashes) / sizeof(hashes[0]); i++) {
+        if ((value_ptr = sxe_dict_add_hash(dictator, hashes[i])) == NULL || sxe_dict_count(dictator) != i + 1)
+            break;
+
+        *value_ptr = (void *)(uintptr_t)i;
+    }
+
+    is(i, sizeof(hashes) / sizeof(hashes[0]),
+       "Made %u insertions (value=%p, count=%u)", i, value, sxe_dict_count(dictator));
+
+    for (i = 0; i < sizeof(hashes) / sizeof(hashes[0]); i++)
+        if (sxe_dict_find_hash(dictator, hashes[i]) != (void *)(uintptr_t)i)
+            break;
+
+    is(i, sizeof(hashes) / sizeof(hashes[0]),
+       "%u of %zu hashes found in dictionary", i, sizeof(hashes) / sizeof(hashes[0]));
     sxe_dict_fini(dictator);
 
     sxe_dict_free(NULL);

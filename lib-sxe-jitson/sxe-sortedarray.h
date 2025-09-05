@@ -35,10 +35,10 @@
 #define SXE_SORTEDARRAY_CMP_CAN_FAIL  KIT_SORTEDARRAY_CMP_CAN_FAIL
 
 #define sxe_sortedarray_class     kit_sortedarray_class
-#define sxe_sortedarray_add       kit_sortedarray_add_element
-#define sxe_sortedarray_delete    kit_sortedarray_delete
-#define sxe_sortedarray_find      kit_sortedarray_find
-#define sxe_sortedarray_get       kit_sortedarray_get
+#define sxe_sortedarray_add       kit_sortedarray_add_elem
+#define sxe_sortedarray_delete    kit_sortedarray_delete_elem
+#define sxe_sortedarray_find      kit_sortedarray_find_key
+#define sxe_sortedarray_get       kit_sortedarray_get_elem
 #define sxe_sortedarray_intersect kit_sortedarray_intersect
 
 #endif

@@ -47,7 +47,7 @@ compare_value_to_element(const void *void_value, const void *void_element_offset
 const struct sxe_jitson *
 sxe_jitson_in_array(const struct sxe_jitson *left, const struct sxe_jitson *right)
 {
-    struct kit_sortedarray_class elem_type;
+    struct kit_sortedarray_class array_class;
     const struct sxe_jitson     *element, *result;
     size_t                       len;
     unsigned                     i;
@@ -69,23 +69,23 @@ sxe_jitson_in_array(const struct sxe_jitson *left, const struct sxe_jitson *righ
         unsigned idx;
         bool     match;
 
-        elem_type.keyoffset = 0;
-        elem_type.fmt       = NULL;
-        elem_type.flags     = KIT_SORTEDARRAY_CMP_CAN_FAIL;
+        array_class.elem_class.keyoffset = 0;
+        array_class.elem_class.fmt       = NULL;
+        array_class.flags                = KIT_SORTEDARRAY_CMP_CAN_FAIL;
 
         if (right->type & SXE_JITSON_TYPE_IS_UNIF) {    // If array is of uniform elements, it's simple
-            elem_type.size = right->uniform.size;
-            elem_type.cmp  = (int (*)(const void *, const void *))sxe_jitson_cmp;
-            idx            = kit_sortedarray_find(&elem_type, &right[1], right->len, left, &match);
+            array_class.elem_class.size = right->uniform.size;
+            array_class.elem_class.cmp  = (int (*)(const void *, const void *))sxe_jitson_cmp;
+            idx                         = kit_sortedarray_find_key(&array_class, &right[1], right->len, left, &match);
         }
         else {
             if (!(right->type & SXE_JITSON_TYPE_INDEXED))   // If the array needs indexing
                 sxe_jitson_array_get_element(right, 0);
 
-            array          = right;
-            elem_type.size = sizeof(left->index[0]);
-            elem_type.cmp  = compare_value_to_element;
-            idx            = kit_sortedarray_find(&elem_type, array->index, array->len, left, &match);
+            array                       = right;
+            array_class.elem_class.size = sizeof(left->index[0]);
+            array_class.elem_class.cmp  = compare_value_to_element;
+            idx                         = kit_sortedarray_find_key(&array_class, array->index, array->len, left, &match);
         }
 
         if (idx == ~0U)    // Error occurred in find
